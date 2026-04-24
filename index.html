@@ -1,0 +1,2548 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Survival 2D — DelastIO</title>
+<style>
+  /* ── Reset ─────────────────────────────────────────────── */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a1a; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; user-select: none; }
+  #gameCanvas { display: block; cursor: crosshair; }
+
+  /* ── Loading Screen ─────────────────────────────────────── */
+  #loading {
+    position: fixed; inset: 0; background: #111;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 999;
+  }
+  #loading h1 { color: #c8a86a; font-size: 32px; margin-bottom: 8px; letter-spacing: 2px; }
+  #loading p  { color: #888; font-size: 13px; margin-bottom: 20px; }
+  #loadBarWrap { width: 280px; height: 10px; background: #333; border-radius: 5px; overflow: hidden; }
+  #loadFill { height: 100%; background: linear-gradient(90deg, #5b9b3f, #8dd15a); border-radius: 5px; width: 0%; transition: width .15s; }
+
+  /* ── HUD Bars ───────────────────────────────────────────── */
+  #bottomStats {
+    position: fixed; left: 12px; bottom: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+    color: #fff; text-shadow: 1px 1px 2px #000; z-index: 110;
+  }
+  .hud-card {
+    min-width: 220px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: rgba(0,0,0,.42);
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 6px 18px rgba(0,0,0,.35);
+  }
+  .bar-label { font-size: 11px; margin-bottom: 2px; font-weight: 600; }
+  .bar { width: 198px; height: 14px; background: rgba(0,0,0,.6); border-radius: 7px; margin-bottom: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.18); box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+  #hpFill     { height: 100%; background: linear-gradient(90deg,#c0392b,#e74c3c); border-radius: 7px; transition: width .25s; box-shadow: 0 0 8px rgba(231,76,60,.6); }
+  #hungerFill { height: 100%; background: linear-gradient(90deg,#b34700,#e67e22); border-radius: 7px; transition: width .25s; box-shadow: 0 0 8px rgba(230,126,34,.5); }
+  #energyFill { height: 100%; background: linear-gradient(90deg,#3f77d8,#7cc6ff); border-radius: 7px; transition: width .15s; box-shadow: 0 0 8px rgba(124,198,255,.5); }
+
+  /* ── Hotbar ─────────────────────────────────────────────── */
+  #hotbar {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; padding: 8px 10px;
+    background: rgba(5,10,5,.8);
+    border: 1px solid rgba(255,255,255,.14); border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.05);
+    z-index: 115;
+  }
+  .hotslot {
+    width: 50px; height: 50px;
+    border: 2px solid rgba(255,255,255,.14); border-radius: 8px;
+    background: rgba(255,255,255,.06);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s;
+    overflow: hidden;
+  }
+  .hotslot:hover  { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.4); }
+  .hotslot.active { border-color: #f0c040; background: rgba(240,192,64,.15); box-shadow: 0 0 14px rgba(240,192,64,.45), inset 0 0 10px rgba(240,192,64,.08); }
+  .hotslot .slotIcon { width: 34px; height: 34px; display: block; }
+  .hotslot .qty   { position: absolute; bottom: 2px; right: 4px; font-size: 10px; color: #fff; text-shadow: 1px 1px 1px #000; font-weight: bold; }
+  .hotslot .num   { position: absolute; top: 1px; left: 4px; font-size: 9px; color: rgba(255,255,255,.4); }
+  .hotslot .useFill {
+    position: absolute; left: 0; bottom: 0; width: 100%; height: 100%;
+    background: linear-gradient(180deg, rgba(124,198,255,.08), rgba(124,198,255,.45));
+    transform-origin: bottom; transform: scaleY(0); pointer-events: none;
+  }
+  .hotslot .useRing {
+    position: absolute; inset: 3px; border-radius: 6px; border: 2px solid rgba(124,198,255,.82);
+    opacity: 0; pointer-events: none;
+  }
+
+  /* ── Inventory Panel ────────────────────────────────────── */
+  #inventory {
+    position: fixed; right: 12px; top: 12px;
+    background: rgba(18,14,10,.92); border: 1px solid rgba(200,168,106,.3);
+    border-radius: 10px; padding: 10px; display: none !important; width: 228px;
+    backdrop-filter: blur(4px); visibility: hidden; pointer-events: none;
+  }
+  #inventory h3 { color: #c8a86a; font-size: 13px; margin-bottom: 8px; text-align: center; font-weight: 700; letter-spacing: 1px; }
+  #invGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .invSlot {
+    width: 48px; height: 48px; border: 1px solid rgba(255,255,255,.15);
+    border-radius: 6px; background: rgba(255,255,255,.05);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; cursor: pointer; flex-direction: column;
+    transition: background .1s; overflow: hidden;
+  }
+  .invSlot:hover  { background: rgba(255,255,255,.14); }
+  .invSlot img    { max-width: 38px; max-height: 38px; object-fit: contain; image-rendering: pixelated; }
+  .invSlot .qty   { position: absolute; bottom: 1px; right: 3px; font-size: 10px; color: #fff; text-shadow: 1px 1px 1px #000; font-weight: bold; }
+  .invSlot .iname { font-size: 7px; color: #aaa; text-align: center; line-height: 1.1; max-width: 44px; display: none; }
+  .invSlot:hover .iname { display: block; }
+
+  #resourceBar {
+    display: none !important;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* ── Craft Menu ─────────────────────────────────────────── */
+  #craftMenu {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    background: linear-gradient(180deg, rgba(24,18,12,.97), rgba(12,9,6,.97)); border: 1px solid rgba(200,168,106,.35);
+    border-radius: 16px; padding: 18px; display: none;
+    width: 560px; max-width: calc(100vw - 40px); max-height: 78vh; overflow-y: auto; color: #eee;
+    backdrop-filter: blur(6px); z-index: 50; box-shadow: 0 18px 48px rgba(0,0,0,.65);
+  }
+  #craftMenu::-webkit-scrollbar { width: 5px; }
+  #craftMenu::-webkit-scrollbar-thumb { background: rgba(200,168,106,.4); border-radius: 3px; }
+  #craftHeader {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; padding-right: 20px;
+  }
+  #craftTitle h2 { margin-bottom: 4px; color: #e5c37a; font-size: 20px; letter-spacing: .6px; }
+  #craftTitle p { color: rgba(255,255,255,.62); font-size: 12px; }
+  #craftList { display: grid; gap: 8px; }
+  .craftItem {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px; background: rgba(255,255,255,.04); transition: background .1s, border-color .1s;
+  }
+  .craftItem:hover { background: rgba(255,255,255,.07); border-color: rgba(229,195,122,.18); }
+  .craftItem .craftIcon  { width: 42px; height: 42px; display: block; flex-shrink: 0; }
+  .craftItem .ci-info { flex: 1; }
+  .craftItem .ci-name { font-size: 13px; font-weight: bold; color: #e0c890; margin-bottom: 3px; }
+  .craftItem .ci-req  { font-size: 11px; color: #999; line-height: 1.35; }
+  .craftBtn { padding: 7px 12px; background: #3d7a27; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 700; transition: background .15s; }
+  .craftBtn:hover:not(:disabled) { background: #4e9e33; }
+  .craftBtn:disabled { background: #3a3a3a; color: #777; cursor: not-allowed; }
+
+  /* ── Key Hints ──────────────────────────────────────────── */
+  #hints {
+    position: fixed; bottom: 16px; right: 12px;
+    color: rgba(255,255,255,.45); font-size: 11px; line-height: 1.6; pointer-events: none;
+    text-align: right;
+  }
+  #hints span { background: rgba(0,0,0,.4); border-radius: 3px; padding: 0 4px; }
+
+  /* ── Damage Flash ───────────────────────────────────────── */
+  #dmgFlash {
+    position: fixed; inset: 0; background: rgba(220,30,30,0);
+    pointer-events: none; transition: background .08s;
+  }
+
+  /* ── Tooltip ────────────────────────────────────────────── */
+  #tooltip {
+    position: fixed; background: rgba(18,14,10,.9); color: #e8d8a0;
+    padding: 5px 10px; border-radius: 6px; font-size: 12px;
+    pointer-events: none; display: none; border: 1px solid rgba(200,168,106,.3);
+    max-width: 200px; z-index: 200;
+  }
+
+  /* ── Close button for menus ─────────────────────────────── */
+  .menu-close {
+    position: absolute; top: 8px; right: 10px; color: #888;
+    cursor: pointer; font-size: 16px; line-height: 1;
+  }
+  .menu-close:hover { color: #fff; }
+  #craftMenu, #inventory { position: fixed; }
+  #craftMenu { position: fixed; }
+
+  #craftTrigger {
+    position: fixed; top: 12px; left: 174px;
+    width: 72px; height: 72px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: none;
+    box-shadow: none; cursor: pointer; z-index: 125;
+  }
+  #craftTrigger:hover { transform: scale(1.04); }
+  #craftTrigger img {
+    width: 72px; height: 72px; object-fit: contain; display: block;
+    filter: drop-shadow(0 8px 10px rgba(0,0,0,.45));
+  }
+  #craftTrigger .craft-trigger-glyph {
+    width: 32px; height: 32px; border-radius: 8px; border: 2px solid #f1d288; position: relative; flex-shrink: 0;
+  }
+  #craftTrigger .craft-trigger-glyph::before,
+  #craftTrigger .craft-trigger-glyph::after {
+    content: ''; position: absolute; left: 50%; top: 50%; width: 16px; height: 4px; background: #f1d288; border-radius: 4px; transform-origin: center;
+  }
+  #craftTrigger .craft-trigger-glyph::before {
+    transform: translate(-50%, -50%) rotate(45deg);
+  }
+  #craftTrigger .craft-trigger-glyph::after {
+    transform: translate(-50%, -50%) rotate(-45deg);
+  }
+  #craftTrigger .craft-shortcut-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; }
+  #craftTrigger .craft-shortcut-text strong { font-size: 12px; font-weight: 700; }
+  #craftTrigger .craft-shortcut-text span { font-size: 10px; color: rgba(255,255,255,.68); }
+
+  /* ── Minimap block (corner, clickable) ───────────────────────── */
+  #minimap-wrap {
+    position: fixed; top: 12px; left: 12px;
+    width: 154px; height: 154px; padding: 6px;
+    background: rgba(0, 0, 0, 0.48);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px; box-shadow: 0 8px 18px rgba(0,0,0,.55);
+    display: flex; justify-content: center; align-items: center;
+    cursor: pointer; z-index: 120;
+  }
+  #minimap-wrap canvas {
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 6px; background: #07180a;
+    image-rendering: pixelated;
+  }
+  #minimap-wrap .map-icon {
+    position: absolute; top: 8px; left: 8px;
+    width: 28px; height: 28px; border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255,255,255,.2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: #ffd966; pointer-events: none;
+  }
+
+  /* ── Large map modal ────────────────────────────────────────── */
+  #large-map-modal {
+    position: fixed; inset: 0;
+    background: rgba(5, 8, 12, 0.75);
+    display: none; align-items: center; justify-content: center;
+    z-index: 160;
+  }
+  #large-map-modal.open { display: flex; }
+  #large-map-modal .map-panel {
+    width: 520px; height: 520px; padding: 16px; box-sizing: border-box;
+    border-radius: 14px; background: rgba(10, 18, 10, 0.95);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 12px 28px rgba(0,0,0,.65);
+    position: relative;
+  }
+  #large-map-modal .map-panel .map-close {
+    position: absolute; top: 10px; right: 14px; cursor: pointer;
+    color: #fffbdf; font-size: 22px; font-weight: bold;
+  }
+  #large-map-modal canvas {
+    width: 100%; height: 100%; background: #04130a;
+    border-radius: 10px; border: 1px solid rgba(255,255,255,.15);
+    image-rendering: pixelated;
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading">
+  <h1>⚔ DelastIO</h1>
+  <p>Завантаження ресурсів...</p>
+  <div id="loadBarWrap"><div id="loadFill"></div></div>
+</div>
+
+
+<!-- Game Canvas -->
+<canvas id="gameCanvas"></canvas>
+
+<!-- HUD -->
+<div id="bottomStats">
+  <div class="hud-card">
+    <div class="bar-label">❤ Здоров'я</div>
+    <div class="bar"><div id="hpFill" style="width:100%"></div></div>
+  </div>
+  <div class="hud-card">
+    <div class="bar-label">🍖 Їжа</div>
+    <div class="bar"><div id="hungerFill" style="width:100%"></div></div>
+  </div>
+  <div class="hud-card">
+    <div class="bar-label">⚡ Енергія</div>
+    <div class="bar"><div id="energyFill" style="width:100%"></div></div>
+  </div>
+</div>
+
+<!-- Hotbar -->
+<div id="hotbar">
+  <div class="hotslot active" data-slot="0"><span class="num">1</span></div>
+  <div class="hotslot"        data-slot="1"><span class="num">2</span></div>
+  <div class="hotslot"        data-slot="2"><span class="num">3</span></div>
+  <div class="hotslot"        data-slot="3"><span class="num">4</span></div>
+  <div class="hotslot"        data-slot="4"><span class="num">5</span></div>
+  <div class="hotslot"        data-slot="5"><span class="num">6</span></div>
+  <div class="hotslot"        data-slot="6"><span class="num">7</span></div>
+  <div class="hotslot"        data-slot="7"><span class="num">8</span></div>
+  <div class="hotslot"        data-slot="8"><span class="num">9</span></div>
+  <div class="hotslot"        data-slot="9"><span class="num">0</span></div>
+</div>
+
+<div id="resourceBar"></div>
+
+<!-- Inventory panel -->
+<div id="inventory">
+  <span class="menu-close" id="invClose">✕</span>
+  <h3>📦 Інвентар</h3>
+  <div id="invGrid"></div>
+</div>
+
+<!-- Craft menu -->
+<div id="craftMenu">
+  <span class="menu-close" id="craftClose">✕</span>
+  <div id="craftHeader">
+    <div id="craftTitle">
+      <h2>Craft Box</h2>
+      <p>Усі доступні рецепти в одному місці</p>
+    </div>
+  </div>
+  <div id="craftList"></div>
+</div>
+
+<!-- Key hints -->
+<div id="hints">
+  <span>WASD</span> рух &nbsp;
+  <span>Shift</span> біг &nbsp;
+  <span>LMB</span> бити / їсти / ставити &nbsp;
+  <span>C</span> крафт &nbsp;
+  <span>F</span> поставити об'єкт &nbsp;
+  <span>1-0</span> слоти
+</div>
+
+<button id="craftTrigger" type="button">
+  <img src="CraftBox.png" alt="Craft Box">
+</button>
+
+<!-- Minimap block (corner, clickable) -->
+<div id="minimap-wrap" title="M - відкрити карту">
+  <canvas id="minimap" width="150" height="150"></canvas>
+  <span class="map-icon">🗺</span>
+</div>
+<div id="large-map-modal">
+  <div class="map-panel">
+    <span class="map-close" id="mapClose">✕</span>
+    <canvas id="large-map" width="500" height="500"></canvas>
+  </div>
+</div>
+
+<!-- Damage flash overlay -->
+<div id="dmgFlash"></div>
+<div id="tooltip"></div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+//  ASSET DEFINITIONS
+// ═══════════════════════════════════════════════════════════
+const ASSET_DEFS = {
+  grass:      'трава.jpg',
+  craftBox:   'CraftBox.png',
+  foodThought:'chicken_food.png',
+};
+
+const imgs = {};          // loaded Image objects keyed by ASSET_DEFS key
+let grassPattern      = null;  // cached canvas pattern for background
+let grassOffscreen    = null;  // offscreen canvas with grass scaled to TILE_SIZE
+let vignetteOffscreen = null;  // offscreen canvas for vignette (built once)
+const particles       = [];    // active particle objects
+const worldMusic      = new Audio('mysic_wordl.mp3');
+
+worldMusic.loop = true;
+worldMusic.volume = 0.32;
+worldMusic.preload = 'auto';
+
+// ─── Preload all images, call cb() when done ────────────────
+function preloadAssets(cb) {
+  const keys = Object.keys(ASSET_DEFS);
+  let done = 0;
+  const fill = document.getElementById('loadFill');
+  keys.forEach(key => {
+    const img = new Image();
+    img.onload = img.onerror = () => {
+      imgs[key] = img;
+      done++;
+      fill.style.width = (done / keys.length * 100) + '%';
+      if (done === keys.length) cb();
+    };
+    img.src = ASSET_DEFS[key];
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CANVAS
+// ═══════════════════════════════════════════════════════════
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+const minimapCanvas = document.getElementById('minimap');
+const minimapCtx    = minimapCanvas ? minimapCanvas.getContext('2d') : null;
+const largeMapCanvas = document.getElementById('large-map');
+const largeMapCtx    = largeMapCanvas ? largeMapCanvas.getContext('2d') : null;
+const minimapWrap    = document.getElementById('minimap-wrap');
+const largeMapModal  = document.getElementById('large-map-modal');
+const mapCloseBtn    = document.getElementById('mapClose');
+let largeMapOpen     = false;
+
+function resizeCanvas() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  grassPattern      = null; // pattern must be recreated for new context state on resize
+  vignetteOffscreen  = null; // must be recreated for new canvas size
+  // grassOffscreen stays valid — it doesn't depend on canvas size
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ═══════════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════════
+const WORLD_WIDTH  = 5000;
+const WORLD_HEIGHT = 5000;
+const TILE_SIZE    = 128;   // misc world-space tile constant
+const GRASS_TILE   = 256;   // grass pattern tile (larger → less obvious repetition)
+const GRID_SIZE    = 50;
+const PLAYER_SPD   = 185;   // px/s
+const PLAYER_R     = 16;    // collision radius
+const ATTACK_CD    = 0.55;  // seconds between hits
+const ATTACK_SWING_DUR = 0.18;
+const HIT_SQUASH_DUR   = 0.1;
+const USE_HOLD_DUR     = 0.85;
+const REACH        = 90;    // attack/interact reach from player center
+const WORKBENCH_USE_RANGE = 70;
+const BUILD_RANGE  = GRID_SIZE * 2;
+const RESOURCE_RESPAWN_MIN = 65000;
+const RESOURCE_RESPAWN_MAX = 110000;
+const RESOURCE_SPAWN_ANIM_DUR = 0.7;
+
+// ─── Item catalogue ─────────────────────────────────────────
+const ITEMS = {
+  branch:     { name: 'Гілка',            imgKey: 'branch',     stack: true },
+  stone:      { name: 'Камінь',           imgKey: null,         stack: true },
+  fiber:      { name: 'Волокно',          imgKey: null,         stack: true },
+  berry:      { name: 'Ягода',            imgKey: 'berry',      stack: true,  eat: true,  healHp: 6,  healHunger: 12, healEnergy: 8 },
+  rawMeat:    { name: "Сире м'ясо",       imgKey: 'rawMeat',    stack: true },
+  cookedMeat: { name: 'Смажене м\'ясо',   imgKey: 'cookedMeat', stack: true,  eat: true,  healHp: 18, healHunger: 35, healEnergy: 20 },
+  bandage:    { name: 'Бинт',             imgKey: 'bandage',    stack: true,  use: true,  healHp: 25 },
+  axe:        { name: "Кам'яна сокира",   imgKey: 'axe',        stack: false, tool: 'axe' },
+  pickaxe:    { name: 'Кирка',            imgKey: 'pickaxe',    stack: false, tool: 'pickaxe' },
+  hammer:     { name: 'Молот',            imgKey: 'hammer',     stack: false, tool: 'hammer' },
+  spear:      { name: 'Спис',             imgKey: 'spear',      stack: false, tool: 'spear' },
+  campfire:   { name: 'Багаття',          imgKey: 'campfire',   stack: true,  placeable: true, walkable: true  },
+  workbench:  { name: 'Верстак',          imgKey: 'workbench',  stack: true,  placeable: true, walkable: false },
+  floor:      { name: 'Підлога',          imgKey: 'floor',      stack: true,  placeable: true, walkable: true  },
+  woodWall:   { name: 'Дерев. стіна',     imgKey: 'woodWall',   stack: true,  placeable: true, walkable: false },
+  door:       { name: 'Двері',            imgKey: 'door',       stack: true,  placeable: true, walkable: false },
+  stoneWall:  { name: 'Кам. стіна',       imgKey: 'stoneWall',  stack: true,  placeable: true, walkable: false },
+  stoneDoor:  { name: 'Кам. двері',       imgKey: 'stoneDoor',  stack: true,  placeable: true, walkable: false },
+};
+
+// ─── Crafting recipes ───────────────────────────────────────
+const RECIPES = [
+  { id: 'axe',       qty: 1, needs: { branch: 3, stone: 2 }, station: 'hand' },
+  { id: 'pickaxe',   qty: 1, needs: { branch: 5, stone: 4 }, station: 'hand' },
+  { id: 'hammer',    qty: 1, needs: { branch: 4, stone: 5 }, station: 'hand' },
+  { id: 'spear',     qty: 1, needs: { branch: 4, stone: 2 }, station: 'hand' },
+  { id: 'bandage',   qty: 2, needs: { fiber: 4 },            station: 'hand' },
+  { id: 'campfire',  qty: 1, needs: { branch: 8, stone: 4 }, station: 'hand' },
+  { id: 'workbench', qty: 1, needs: { branch: 12 },          station: 'hand' },
+  { id: 'floor',     qty: 4, needs: { branch: 6 },           station: 'workbench', time: 5000 },
+  { id: 'woodWall',  qty: 2, needs: { branch: 10 },          station: 'workbench', time: 7000 },
+  { id: 'door',      qty: 1, needs: { branch: 8 },           station: 'workbench', time: 8000 },
+  { id: 'stoneWall', qty: 2, needs: { stone: 12, branch: 2 }, station: 'workbench', time: 11000 },
+  { id: 'stoneDoor', qty: 1, needs: { stone: 10, branch: 4 }, station: 'workbench', time: 13000 },
+];
+
+const RESOURCE_BAR_ORDER = ['branch', 'stone', 'fiber', 'berry', 'rawMeat', 'cookedMeat', 'bandage', 'axe', 'pickaxe', 'hammer', 'spear', 'campfire', 'workbench', 'floor', 'woodWall', 'door', 'stoneWall', 'stoneDoor'];
+
+// ─── Resource type catalogue ─────────────────────────────────
+const RES_TYPES = [
+  // r = collision radius (px), drawSize = visual sprite size (px)
+  { rtype: 'bush',      imgKey: 'bush',       maxHp: 3, r: 18, drawSize: 96,  drop: 'branch', dropMin: 2, dropMax: 4, needTool: null },
+  { rtype: 'nettle',    imgKey: 'nettleBush', maxHp: 3, r: 18, drawSize: 96,  drop: 'fiber',  dropMin: 1, dropMax: 3, needTool: null },
+  { rtype: 'berryBush', imgKey: 'berryBush',  maxHp: 3, r: 18, drawSize: 96,  drop: 'berry',  dropMin: 1, dropMax: 3, needTool: null },
+  { rtype: 'ore',       imgKey: 'oreRock',    maxHp: 7, r: 22, drawSize: 108, drop: 'stone',  dropMin: 2, dropMax: 5, needTool: 'pickaxe' },
+];
+const RES_COUNTS = { bush: 68, nettle: 30, berryBush: 27, ore: 45 };
+
+// ═══════════════════════════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════════════════════════
+const player = {
+  x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2,
+  hp: 100, maxHp: 100,
+  hunger: 100, maxHunger: 100,
+  energy: 100, maxEnergy: 100,
+  angle: 0,           // facing angle (radians)
+  atkAnim: 0,         // 0→1, decays to 0 (swing animation)
+  atkCd: 0,           // seconds until next attack
+  isMoving: false,    // idle breathing animation flag
+  isSprinting: false,
+  sprintFxCd: 0,
+  wobble: 0,
+  useProgress: 0,
+  useHeldDone: false,
+  foodThoughtTimer: 0,
+  foodThoughtCd: 5,
+};
+
+const hotbar     = Array(10).fill(null);
+const inventory  = hotbar;
+let   activeSlot = 0;
+
+let resources    = [];   // world resource objects
+let placed       = [];   // placed buildings / objects
+const popups     = [];   // floating text { wx, wy, text, life }
+
+const cam = { x: 0, y: 0 };    // top-left world corner visible on screen
+const keys = {};
+let msx = 0, msy = 0;          // mouse screen X/Y
+let mwx = 0, mwy = 0;          // mouse world X/Y
+let mouseHeld = false;
+
+let invOpen   = false;
+let craftOpen = false;
+let lastTs    = 0;
+let craftContext = 'hand';
+let craftStation = null;
+const workbenchJobs = [];
+const resourceRespawns = [];
+
+// ═══════════════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════════════
+function rng(a, b)   { return a + Math.floor(Math.random() * (b - a + 1)); }
+function dst(a, b)   { return Math.hypot(a.x - b.x, a.y - b.y); }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function angleDelta(a, b) {
+  let d = (a - b + Math.PI) % (Math.PI * 2);
+  if (d < 0) d += Math.PI * 2;
+  return Math.abs(d - Math.PI);
+}
+
+function imgOk(key) {
+  const img = imgs[key];
+  return img && img.complete && img.naturalWidth > 0;
+}
+
+function tryPlayWorldMusic() {
+  const playPromise = worldMusic.play();
+  if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(() => {});
+}
+function getPlacedObjectMaxHp(id) {
+  return ({ floor: 6, woodWall: 14, door: 14, stoneWall: 24, stoneDoor: 24, workbench: 18, campfire: 10 })[id] || 12;
+}
+function ensurePlacedObjectState(obj) {
+  if (!obj) return obj;
+  if (!obj.uid) obj.uid = Math.random().toString(36).slice(2);
+  if (typeof obj.maxHp !== 'number') obj.maxHp = getPlacedObjectMaxHp(obj.id);
+  if (typeof obj.curHp !== 'number') obj.curHp = obj.maxHp;
+  if (typeof obj.lastHitAt !== 'number') obj.lastHitAt = 0;
+  return obj;
+}
+function getWorkbenchJobs(station) {
+  if (!station) return [];
+  const uid = ensurePlacedObjectState(station).uid;
+  return workbenchJobs.filter(job => job.stationUid === uid);
+}
+function getWorkbenchReadyJobs(station, now = performance.now()) {
+  return getWorkbenchJobs(station).filter(job => job.readyAt <= now);
+}
+function collectWorkbenchOutput(station) {
+  const readyJobs = getWorkbenchReadyJobs(station).sort((a, b) => a.readyAt - b.readyAt);
+  if (!readyJobs.length) return false;
+  let picked = 0;
+  readyJobs.forEach(job => {
+    if (!canAddItem(job.id, job.qty)) return;
+    if (!invAdd(job.id, job.qty)) return;
+    const idx = workbenchJobs.indexOf(job);
+    if (idx !== -1) workbenchJobs.splice(idx, 1);
+    spawnPopup(station.x, station.y - 26, `+${job.qty} ${ITEMS[job.id]?.name || job.id}`);
+    picked++;
+  });
+  if (!picked) {
+    spawnPopup(station.x, station.y - 26, 'Немає місця');
+    return false;
+  }
+  if (craftOpen && craftContext === 'workbench' && craftStation?.uid === station.uid) buildCraftUI();
+  return true;
+}
+
+// ─── Inventory helpers ───────────────────────────────────────
+function invFind(id)  { return inventory.find(s => s && s.id === id) || null; }
+function invCount(id) { return inventory.reduce((sum, s) => sum + (s && s.id === id ? s.qty : 0), 0); }
+function firstEmptySlot() { return inventory.findIndex(s => !s); }
+function firstEmptyNonActiveSlot() { return inventory.findIndex((s, i) => !s && i !== activeSlot); }
+function canAddItem(id, qty = 1) {
+  const def = ITEMS[id];
+  if (!def) return false;
+  if (def.stack) return !!invFind(id) || firstEmptySlot() !== -1;
+  return inventory.filter(s => !s).length >= qty;
+}
+
+function invAdd(id, qty = 1) {
+  const def = ITEMS[id];
+  if (!def) return false;
+  let left = qty;
+  if (def.stack) {
+    const existingPreferred = inventory.find((s, i) => s && s.id === id && i !== activeSlot);
+    const existingFallback = invFind(id);
+    if (existingPreferred || existingFallback) {
+      (existingPreferred || existingFallback).qty += qty;
+      left = 0;
+    } else {
+      const idx = firstEmptyNonActiveSlot() !== -1 ? firstEmptyNonActiveSlot() : firstEmptySlot();
+      if (idx !== -1) {
+        inventory[idx] = { id, qty };
+        left = 0;
+      }
+    }
+  } else {
+    while (left > 0) {
+      const idx = firstEmptyNonActiveSlot() !== -1 ? firstEmptyNonActiveSlot() : firstEmptySlot();
+      if (idx === -1) break;
+      inventory[idx] = { id, qty: 1 };
+      left -= 1;
+    }
+  }
+  refreshHotbarUI();
+  return left === 0;
+}
+
+function invRemove(id, qty = 1) {
+  if (invCount(id) < qty) return false;
+  let left = qty;
+  for (let i = 0; i < inventory.length && left > 0; i++) {
+    const slot = inventory[i];
+    if (!slot || slot.id !== id) continue;
+    const take = Math.min(slot.qty, left);
+    slot.qty -= take;
+    left -= take;
+    if (slot.qty <= 0) inventory[i] = null;
+  }
+  refreshHotbarUI();
+  return true;
+}
+
+function consumeActiveSlot(qty = 1) {
+  const slot = hotbar[activeSlot];
+  if (!slot || slot.qty < qty) return false;
+  slot.qty -= qty;
+  if (slot.qty <= 0) hotbar[activeSlot] = null;
+  refreshHotbarUI();
+  return true;
+}
+
+function activeTool() { return hotbar[activeSlot]?.id || null; }
+function activeSlotItem() { return hotbar[activeSlot] || null; }
+function isHoldUseItem(id) {
+  const def = ITEMS[id];
+  return !!(def && (def.eat || def.use));
+}
+function resetUseProgress() {
+  player.useProgress = 0;
+  player.useHeldDone = false;
+  refreshUseProgressUI();
+}
+function getDoorPromptTarget() {
+  return placed
+    .filter(obj => (obj.id === 'door' || obj.id === 'stoneDoor') && dst(player, obj) <= 50)
+    .sort((a, b) => dst(player, a) - dst(player, b))[0] || null;
+}
+function getWorkbenchPromptTarget() {
+  return placed
+    .filter(obj => obj.id === 'workbench' && dst(player, obj) <= WORKBENCH_USE_RANGE)
+    .sort((a, b) => dst(player, a) - dst(player, b))[0] || null;
+}
+function getInteractionPromptTarget() {
+  const door = getDoorPromptTarget();
+  const workbench = getWorkbenchPromptTarget();
+  const targets = [];
+  if (door) targets.push({ kind: 'door', obj: door });
+  if (workbench) targets.push({ kind: 'workbench', obj: workbench });
+  if (!targets.length) return null;
+  targets.sort((a, b) => dst(player, a.obj) - dst(player, b.obj));
+  const target = targets[0];
+  if (target.kind === 'door') {
+    return { ...target, text: target.obj.open ? 'E ЗАЧИНИТИ' : 'E ВІДЧИНИТИ' };
+  }
+  const readyCount = getWorkbenchReadyJobs(target.obj).length;
+  return { ...target, text: readyCount > 0 ? `E ЗАБРАТИ ${readyCount}` : 'E ВЕРСТАК' };
+}
+function isPlacementInRange(x, y) {
+  return Math.hypot(player.x - x, player.y - y) <= BUILD_RANGE;
+}
+function getFacingHarvestTarget() {
+  const tipX = player.x + Math.cos(player.angle) * REACH;
+  const tipY = player.y + Math.sin(player.angle) * REACH;
+  let best = null;
+  let bestScore = Infinity;
+  resources.forEach(res => {
+    if ((res.spawnAnim || 0) > 0) return;
+    const distToPlayer = dst(player, res);
+    if (distToPlayer > REACH + res.r) return;
+    const targetAngle = Math.atan2(res.y - player.y, res.x - player.x);
+    const diff = angleDelta(player.angle, targetAngle);
+    if (diff > 0.95) return;
+    const distToTip = Math.hypot(tipX - res.x, tipY - res.y);
+    const score = distToTip + diff * 60 + distToPlayer * 0.2;
+    if (score < bestScore) {
+      bestScore = score;
+      best = res;
+    }
+  });
+  return best;
+}
+function getFacingPlacedTarget() {
+  const tipX = player.x + Math.cos(player.angle) * REACH;
+  const tipY = player.y + Math.sin(player.angle) * REACH;
+  let best = null;
+  let bestScore = Infinity;
+  placed.forEach(obj => {
+    ensurePlacedObjectState(obj);
+    const targetRadius = Math.max(obj.r || 0, obj.id === 'floor' ? 18 : 24);
+    const distToPlayer = dst(player, obj);
+    if (distToPlayer > REACH + targetRadius) return;
+    const targetAngle = Math.atan2(obj.y - player.y, obj.x - player.x);
+    const diff = angleDelta(player.angle, targetAngle);
+    if (diff > 0.95) return;
+    const distToTip = Math.hypot(tipX - obj.x, tipY - obj.y);
+    const score = distToTip + diff * 60 + distToPlayer * 0.25;
+    if (score < bestScore) {
+      bestScore = score;
+      best = obj;
+    }
+  });
+  return best;
+}
+function snapGridCoord(v, max) { return clamp(Math.floor(v / GRID_SIZE) * GRID_SIZE + GRID_SIZE / 2, GRID_SIZE / 2, max - GRID_SIZE / 2); }
+function getPlacementPoint() { return { x: snapGridCoord(mwx, WORLD_WIDTH), y: snapGridCoord(mwy, WORLD_HEIGHT) }; }
+
+// ═══════════════════════════════════════════════════════════
+//  WORLD GENERATION
+// ═══════════════════════════════════════════════════════════
+function createResourceInstance(def, x, y, spawnAnim = 0) {
+  return {
+    ...def,
+    x, y,
+    curHp: def.maxHp,
+    id: Math.random().toString(36).slice(2),
+    hitScale: 1,
+    hitScaleTime: 0,
+    hitJoltX: 0,
+    hitJoltY: 0,
+    hitJoltTime: 0,
+    hitJoltAngle: 0,
+    lastHitAt: 0,
+    animSeed: Math.random() * Math.PI * 2,
+    spawnAnim,
+  };
+}
+
+function generateWorld() {
+  resources = [];
+  placed    = [];
+  workbenchJobs.length = 0;
+  resourceRespawns.length = 0;
+  craftStation = null;
+  const margin = 220;
+  const spawnSafe = 200;  // keep spawn area clear
+
+  RES_TYPES.forEach(def => {
+    const count = RES_COUNTS[def.rtype] || 30;
+    for (let i = 0; i < count; i++) {
+      let placed = false, tries = 0;
+      while (!placed && tries++ < 40) {
+        const x = margin + Math.random() * (WORLD_WIDTH - margin * 2);
+        const y = margin + Math.random() * (WORLD_HEIGHT - margin * 2);
+        if (Math.hypot(x - WORLD_WIDTH/2, y - WORLD_HEIGHT/2) < spawnSafe) continue;
+        const tooClose = resources.some(r => Math.hypot(r.x - x, r.y - y) < 100);
+        if (!tooClose) {
+          resources.push(createResourceInstance(def, x, y));
+          placed = true;
+        }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PHYSICS / COLLISION
+// ═══════════════════════════════════════════════════════════
+// Circle vs circle separation (pushes player out of solid objects)
+function resolveCollisions(nx, ny) {
+  let x = nx, y = ny;
+  const pr = PLAYER_R;
+
+  // Resources — collision against 2.5D foot anchor (bottom 32% of sprite)
+  resources.forEach(res => {
+    if ((res.spawnAnim || 0) > 0) return;
+    const footY = res.y + res.drawSize * 0.32;
+    const minD  = pr + res.r;
+    const dx = x - res.x;
+    const dy = y - footY;
+    const d = Math.hypot(dx, dy);
+    if (d < minD && d > 0) {
+      x = res.x + (dx / d) * minD;
+      y = footY + (dy / d) * minD;
+    }
+  });
+
+  // Placed structures (only non-walkable)
+  placed.forEach(obj => {
+    const item = ITEMS[obj.id];
+    if (item && item.walkable) return;
+    if ((obj.id === 'door' || obj.id === 'stoneDoor') && obj.open) return;
+    const minD = pr + (obj.r || 22);
+    const dx = x - obj.x, dy = y - obj.y;
+    const d = Math.hypot(dx, dy);
+    if (d < minD && d > 0) {
+      x = obj.x + (dx / d) * minD;
+      y = obj.y + (dy / d) * minD;
+    }
+  });
+
+  return {
+    x: clamp(x, pr, WORLD_WIDTH - pr),
+    y: clamp(y, pr, WORLD_HEIGHT - pr),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ATTACK / INTERACT
+// ═══════════════════════════════════════════════════════════
+function scheduleResourceRespawn(res) {
+  resourceRespawns.push({
+    rtype: res.rtype,
+    x: res.x,
+    y: res.y,
+    respawnAt: performance.now() + rng(RESOURCE_RESPAWN_MIN, RESOURCE_RESPAWN_MAX),
+  });
+}
+
+function doAttack() {
+  if (player.atkCd > 0) return;
+  player.atkAnim = ATTACK_SWING_DUR;
+  player.atkCd   = ATTACK_CD;
+
+  const tool = activeTool();
+  const toolDef = tool ? ITEMS[tool] : null;
+  const toolType = toolDef ? toolDef.tool : null;
+  const res = getFacingHarvestTarget();
+
+  if (res) {
+    if (res.rtype === 'ore' && toolType !== 'pickaxe' && toolType !== 'axe') {
+      spawnPopup(res.x, res.y, '⛏ Потрібна сокира або кирка!');
+      return;
+    }
+
+    if ((res.rtype === 'nettle' || res.rtype === 'berryBush') && toolType === 'axe') {
+      spawnPopup(res.x, res.y, '✋ Це краще збирати руками');
+      return;
+    }
+
+    let dmg = 1;
+    let yieldMul = 1;
+    if (toolType === 'axe' && res.rtype === 'bush') { dmg = 2; yieldMul = 2; }
+    if (toolType === 'axe' && res.rtype === 'ore') { dmg = 1; yieldMul = 0.7; }
+    if (toolType === 'pickaxe' && res.rtype === 'ore') { dmg = 2; yieldMul = 2; }
+    if (!toolType && res.rtype === 'ore') yieldMul = 0.5;
+    if (!toolType && (res.rtype === 'nettle' || res.rtype === 'berryBush')) yieldMul = 1.2;
+    res.curHp -= dmg;
+    res.lastHitAt = performance.now();
+    res.hitScaleTime = HIT_SQUASH_DUR;
+    res.hitJoltTime = HIT_SQUASH_DUR;
+    res.hitJoltAngle = Math.atan2(res.y - player.y, res.x - player.x) + (Math.random() - 0.5) * 0.7;
+    spawnHitParticles(res);
+
+    const q = Math.max(1, Math.floor(yieldMul));
+    if (invAdd(res.drop, q)) {
+      spawnPopup(res.x, res.y - 10, `+${q} ${ITEMS[res.drop]?.name || res.drop}`);
+    } else {
+      spawnPopup(res.x, res.y - 10, 'Немає місця');
+    }
+
+    if (res.curHp <= 0) {
+      scheduleResourceRespawn(res);
+      resources = resources.filter(r => r !== res);
+    }
+    return;
+  }
+
+  const obj = getFacingPlacedTarget();
+  if (obj && tool !== 'rawMeat' && tool !== 'cookedMeat') {
+    ensurePlacedObjectState(obj);
+    if (obj.id === 'workbench' && getWorkbenchJobs(obj).length > 0) {
+      spawnPopup(obj.x, obj.y - 18, 'Спершу забери крафт');
+      return;
+    }
+    let dmg = 1;
+    if (toolType === 'hammer') dmg = 3.2;
+    else if (toolType === 'axe' && (obj.id === 'woodWall' || obj.id === 'door' || obj.id === 'workbench')) dmg = 1.6;
+    else if (toolType === 'pickaxe' && (obj.id === 'stoneWall' || obj.id === 'stoneDoor' || obj.id === 'campfire' || obj.id === 'floor')) dmg = 1.6;
+    obj.curHp = Math.max(0, obj.curHp - dmg);
+    obj.lastHitAt = performance.now();
+    spawnParticles(obj.x, obj.y, obj.id === 'stoneWall' || obj.id === 'stoneDoor' || obj.id === 'campfire' ? '#9ca1a5' : '#9b6a3c', 5);
+    if (obj.curHp <= 0) {
+      const objName = ITEMS[obj.id]?.name || obj.id;
+      const objIdx = placed.indexOf(obj);
+      if (objIdx !== -1) placed.splice(objIdx, 1);
+      if (obj.id === 'workbench') {
+        for (let i = workbenchJobs.length - 1; i >= 0; i--) {
+          if (workbenchJobs[i].stationUid === obj.uid) workbenchJobs.splice(i, 1);
+        }
+        if (craftStation?.uid === obj.uid) setCraftOpen(false);
+      }
+      if (canAddItem(obj.id, 1) && invAdd(obj.id, 1)) {
+        spawnPopup(obj.x, obj.y - 18, `+1 ${objName}`);
+      } else {
+        spawnPopup(obj.x, obj.y - 18, `Зламано ${objName}`);
+      }
+    }
+    return;
+  }
+
+  
+  placed.forEach(obj => {
+    if (obj.id !== 'campfire') return;
+    if (dst(player, obj) > REACH + 24) return;
+    if (dst({ x: mwx, y: mwy }, obj) > 36) return;
+    if (invCount('rawMeat') > 0 && canAddItem('cookedMeat', 1)) {
+      invRemove('rawMeat', 1);
+      invAdd('cookedMeat', 1);
+      spawnPopup(obj.x, obj.y - 20, '🍖 Приготовано!');
+    } else if (invCount('rawMeat') > 0) {
+      spawnPopup(obj.x, obj.y - 20, 'Немає місця');
+    }
+  });
+}
+
+function doUseItem(id) {
+  const def = ITEMS[id];
+  if (!def || (!def.eat && !def.use)) return;
+  if (invCount(id) <= 0) return;
+  if (hotbar[activeSlot]?.id === id) {
+    if (!consumeActiveSlot(1)) return;
+  } else if (!invRemove(id, 1)) {
+    return;
+  }
+  if (def.healHp)     player.hp     = clamp(player.hp     + def.healHp,     0, player.maxHp);
+  if (def.healHunger) player.hunger = clamp(player.hunger + def.healHunger, 0, player.maxHunger);
+  if (def.healEnergy) player.energy = clamp(player.energy + def.healEnergy, 0, player.maxEnergy);
+  const msg = def.healHp ? `+${def.healHp} HP` : 'Використано';
+  spawnPopup(player.x, player.y - 24, msg);
+  refreshHudBars();
+  refreshUseProgressUI();
+}
+
+// ─── Place selected hotbar item in world ─────────────────────
+function doPlace() {
+  const tool = activeTool();
+  if (!tool) return;
+  const def = ITEMS[tool];
+  if (!def || !def.placeable) return;
+  const { x, y } = getPlacementPoint();
+  if (!isPlacementInRange(x, y)) {
+    spawnPopup(player.x, player.y - 28, 'Занадто далеко');
+    return;
+  }
+  const occupied = placed.some(obj => obj.x === x && obj.y === y && (tool === 'floor' ? obj.id === 'floor' : obj.id !== 'floor'));
+  if (occupied) return;
+  if (!consumeActiveSlot(1)) return;
+  placed.push({
+    id: tool,
+    x,
+    y,
+    uid: Math.random().toString(36).slice(2),
+    r:  tool === 'woodWall' || tool === 'door' || tool === 'stoneWall' || tool === 'stoneDoor' ? 22 : tool === 'workbench' ? 26 : tool === 'floor' ? 0 : 22,
+    open: false,
+    animSeed: Math.random() * Math.PI * 2,
+    fxCd: Math.random() * 0.08,
+    maxHp: getPlacedObjectMaxHp(tool),
+    curHp: getPlacedObjectMaxHp(tool),
+    lastHitAt: 0,
+  });
+  refreshHotbarUI();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PARTICLES
+// ═══════════════════════════════════════════════════════════
+function spawnParticles(wx, wy, color, count = 4) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 65 + Math.random() * 85;
+    const life  = 0.35 + Math.random() * 0.18;
+    particles.push({ x: wx, y: wy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, color, size: 3 + Math.random() * 2.2, life, maxLife: life });
+  }
+}
+
+function spawnHitParticles(res) {
+  const color = { bush: '#5ca934', nettle: '#4e9131', berryBush: '#d83b35', ore: '#9ca1a5' }[res.rtype] || '#999';
+  spawnParticles(res.x, res.y, color, 4);
+}
+
+function spawnCampfireParticle(obj) {
+  const ember = Math.random() < 0.78;
+  const life  = ember ? 0.35 + Math.random() * 0.25 : 0.7 + Math.random() * 0.45;
+  particles.push({
+    x: obj.x + (Math.random() - 0.5) * 12,
+    y: obj.y - 4 + (Math.random() - 0.5) * 6,
+    vx: (Math.random() - 0.5) * (ember ? 14 : 9),
+    vy: -(ember ? 30 + Math.random() * 28 : 16 + Math.random() * 12),
+    color: ember ? (Math.random() < 0.5 ? 'rgba(255,196,74,0.95)' : 'rgba(255,118,56,0.95)') : 'rgba(95,95,95,0.32)',
+    size: ember ? 4 + Math.random() * 4 : 8 + Math.random() * 5,
+    life,
+    maxLife: life,
+    circle: true,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FLOATING POPUP TEXT
+// ═══════════════════════════════════════════════════════════
+function spawnPopup(wx, wy, text) {
+  popups.push({ wx, wy, text, life: 1.6 });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UPDATE (game logic per frame)
+// ═══════════════════════════════════════════════════════════
+function update(dt) {
+  const now = performance.now();
+  // ── Player movement ────────────────────────────────────────
+  let dx = 0, dy = 0;
+  if (keys['KeyW'] || keys['ArrowUp'])    dy -= 1;
+  if (keys['KeyS'] || keys['ArrowDown'])  dy += 1;
+  if (keys['KeyA'] || keys['ArrowLeft'])  dx -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) dx += 1;
+  player.isMoving = dx !== 0 || dy !== 0;
+  const targetWobble = player.isMoving ? Math.sin(now / 150) * 0.15 : 0;
+  player.wobble += (targetWobble - player.wobble) * Math.min(1, dt * 10);
+  if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
+
+  const sprintHeld = !!(keys['ShiftLeft'] || keys['ShiftRight']);
+  const sprintCost = dt * 28;
+  player.isSprinting = sprintHeld && player.isMoving && player.energy > sprintCost;
+  const moveSpd = PLAYER_SPD * (player.isSprinting ? 1.65 : 1);
+  const nx = player.x + dx * moveSpd * dt;
+  const ny = player.y + dy * moveSpd * dt;
+  const resolved = resolveCollisions(nx, ny);
+  player.x = resolved.x;
+  player.y = resolved.y;
+
+  if (player.isSprinting) {
+    player.energy = Math.max(0, player.energy - dt * 28);
+    player.sprintFxCd -= dt;
+    if (player.sprintFxCd <= 0) {
+      for (let i = 0; i < 3; i++) {
+        const life = 0.16 + Math.random() * 0.08;
+        particles.push({
+          x: player.x - dx * (18 + Math.random() * 10) + (Math.random() - 0.5) * 10,
+          y: player.y - dy * (18 + Math.random() * 10) + (Math.random() - 0.5) * 10,
+          vx: -dx * (10 + Math.random() * 16) + (Math.random() - 0.5) * 28,
+          vy: -dy * (10 + Math.random() * 16) + (Math.random() - 0.5) * 28,
+          color: 'rgba(255,255,255,0.95)',
+          size: 6 + Math.random() * 6,
+          life,
+          maxLife: life,
+          circle: true,
+        });
+      }
+      player.sprintFxCd = 0.04;
+    }
+  } else {
+    player.energy = Math.min(player.maxEnergy, player.energy + dt * (player.hunger > 20 ? 14 : 7));
+    player.sprintFxCd = 0;
+  }
+
+  // ── Camera follows player (lerp for smooth movement) ──────
+  const targetCamX = player.x - canvas.width  / 2;
+  const targetCamY = player.y - canvas.height / 2;
+  cam.x += (targetCamX - cam.x) * 0.1;
+  cam.y += (targetCamY - cam.y) * 0.1;
+  const maxCamX = Math.max(0, WORLD_WIDTH  - canvas.width);
+  const maxCamY = Math.max(0, WORLD_HEIGHT - canvas.height);
+  cam.x = clamp(cam.x, 0, maxCamX);
+  cam.y = clamp(cam.y, 0, maxCamY);
+
+  // ── Mouse world position ───────────────────────────────────
+  mwx = msx + cam.x;
+  mwy = msy + cam.y;
+
+  // ── Player facing angle ────────────────────────────────────
+  player.angle = Math.atan2(mwy - player.y, mwx - player.x);
+
+  const heldTool = activeTool();
+  if (mouseHeld && !(heldTool && ITEMS[heldTool]?.placeable) && !(heldTool && isHoldUseItem(heldTool))) doAttack();
+
+  const activeItem = activeSlotItem();
+  if (mouseHeld && activeItem && isHoldUseItem(activeItem.id) && !player.useHeldDone) {
+    player.useProgress = clamp(player.useProgress + dt / USE_HOLD_DUR, 0, 1);
+    if (player.useProgress >= 1) {
+      doUseItem(activeItem.id);
+      player.useProgress = 0;
+      player.useHeldDone = true;
+    }
+  } else if (!mouseHeld) {
+    player.useProgress = 0;
+    player.useHeldDone = false;
+  } else if (!activeItem || !isHoldUseItem(activeItem.id)) {
+    player.useProgress = 0;
+  }
+
+  // ── Timers ─────────────────────────────────────────────────
+  if (player.atkCd  > 0) player.atkCd   = Math.max(0, player.atkCd  - dt);
+  if (player.atkAnim > 0) player.atkAnim = Math.max(0, player.atkAnim - dt);
+
+  // ── Hunger decay + starvation damage ─────────────────────
+  player.hunger = Math.max(0, player.hunger - dt * (player.isSprinting ? 0.75 : 0.45));
+  if (player.hunger <= player.maxHunger * 0.5) {
+    player.foodThoughtCd = Math.max(0, player.foodThoughtCd - dt);
+    if (player.foodThoughtCd <= 0 && player.foodThoughtTimer <= 0) {
+      player.foodThoughtTimer = 2.7;
+      player.foodThoughtCd = 10 + Math.random() * 9;
+    }
+  } else {
+    player.foodThoughtTimer = 0;
+    player.foodThoughtCd = 4;
+  }
+  if (player.foodThoughtTimer > 0) player.foodThoughtTimer = Math.max(0, player.foodThoughtTimer - dt);
+  if (player.hunger <= 0) {
+    player.hp = Math.max(0, player.hp - dt * 3);
+    document.getElementById('dmgFlash').style.background = 'rgba(220,30,30,0.25)';
+    setTimeout(() => document.getElementById('dmgFlash').style.background = 'rgba(220,30,30,0)', 200);
+  }
+
+  for (let i = workbenchJobs.length - 1; i >= 0; i--) {
+    const job = workbenchJobs[i];
+    if (now < job.readyAt) continue;
+    if (!job.readyNotified) {
+      spawnPopup(job.wx, job.wy - 26, `✔ ${ITEMS[job.id]?.name || job.id}`);
+      job.readyNotified = true;
+      if (craftOpen && craftContext === 'workbench' && craftStation?.uid === job.stationUid) buildCraftUI();
+    }
+  }
+
+  for (let i = resourceRespawns.length - 1; i >= 0; i--) {
+    const slot = resourceRespawns[i];
+    if (now < slot.respawnAt) continue;
+    const def = RES_TYPES.find(r => r.rtype === slot.rtype);
+    if (!def) {
+      resourceRespawns.splice(i, 1);
+      continue;
+    }
+    const blocked = resources.some(r => Math.hypot(r.x - slot.x, r.y - slot.y) < 92) || Math.hypot(player.x - slot.x, player.y - slot.y) < 140;
+    if (blocked) {
+      slot.respawnAt = now + 8000 + Math.random() * 8000;
+      continue;
+    }
+    resources.push(createResourceInstance(def, slot.x, slot.y, RESOURCE_SPAWN_ANIM_DUR));
+    resourceRespawns.splice(i, 1);
+  }
+
+  placed.forEach(obj => {
+    if (obj.id !== 'campfire') return;
+    obj.fxCd = (obj.fxCd ?? 0) - dt;
+    if (obj.fxCd <= 0) {
+      spawnCampfireParticle(obj);
+      if (Math.random() < 0.45) spawnCampfireParticle(obj);
+      obj.fxCd = 0.035 + Math.random() * 0.05;
+    }
+  });
+
+  // ── Popup decay ────────────────────────────────────────────
+  for (let i = popups.length - 1; i >= 0; i--) {
+    popups[i].life -= dt;
+    popups[i].wy   -= 22 * dt;
+    if (popups[i].life <= 0) popups.splice(i, 1);
+  }
+
+  // ── Resource hit animation ─────────────────────────────────
+  resources.forEach(res => {
+    if (res.spawnAnim > 0) res.spawnAnim = Math.max(0, res.spawnAnim - dt);
+    const hitElapsed = res.lastHitAt ? (now - res.lastHitAt) / 1000 : Infinity;
+    res.hitScale = hitElapsed < HIT_SQUASH_DUR
+      ? 1 - Math.sin((hitElapsed / HIT_SQUASH_DUR) * Math.PI) * 0.1
+      : 1;
+    if (res.hitJoltTime > 0) {
+      res.hitJoltTime -= dt;
+      const t = Math.max(0, res.hitJoltTime) / HIT_SQUASH_DUR;
+      res.hitJoltX = Math.cos(res.hitJoltAngle) * 9 * t;
+      res.hitJoltY = Math.sin(res.hitJoltAngle) * 5 * t - (1 - t) * 3;
+      if (res.hitJoltTime <= 0) {
+        res.hitJoltTime = 0;
+        res.hitJoltX = 0;
+        res.hitJoltY = 0;
+      }
+    }
+  });
+
+  // ── Particle physics ────────────────────────────────────────
+  const drag = Math.max(0, 1 - 5 * dt);
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.vx *= drag;
+    p.vy *= drag;
+  }
+
+  // ── HUD bars ───────────────────────────────────────────────
+  refreshHudBars();
+  refreshUseProgressUI();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DRAWING HELPERS
+// ═══════════════════════════════════════════════════════════
+function toScreen(wx, wy) { return { sx: wx - cam.x, sy: wy - cam.y }; }
+
+// Draw a world-space image centered at (wx,wy), sized s×s, rotated angle
+function drawImg(imgKey, wx, wy, s, angle = 0, alpha = 1, scale = 1) {
+  const { sx, sy } = toScreen(wx, wy);
+  if (sx < -s || sx > canvas.width + s || sy < -s || sy > canvas.height + s) return; // cull
+  ctx.save();
+  ctx.translate(sx, sy);
+  if (angle) ctx.rotate(angle);
+  if (scale !== 1) ctx.scale(scale, scale);
+  ctx.globalAlpha = alpha;
+  if (imgOk(imgKey)) {
+    ctx.drawImage(imgs[imgKey], -s/2, -s/2, s, s);
+  } else {
+    ctx.fillStyle = '#888';
+    ctx.beginPath(); ctx.arc(0, 0, s/2, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function vStyle(c, width = 3, stroke = '#222') {
+  c.lineWidth = width;
+  c.strokeStyle = stroke;
+  c.lineJoin = 'round';
+  c.lineCap = 'round';
+}
+
+function vPoly(c, pts) {
+  c.beginPath();
+  pts.forEach(([px, py], i) => {
+    if (i === 0) c.moveTo(px, py);
+    else c.lineTo(px, py);
+  });
+  c.closePath();
+}
+
+function drawBushShape(c, x, y, size, opts = {}) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  if (typeof opts.windPhase === 'number') c.scale(1 + Math.sin(opts.windPhase) * 0.02, 1);
+  vStyle(c, (opts.ui ? 2 : 3) / s);
+  const base = opts.nettle ? '#4e9131' : '#5c9a31';
+  const dark = opts.nettle ? '#3d7f25' : '#3f6f21';
+  c.fillStyle = '#7a512f';
+  c.fillRect(-8, 12, 16, 30);
+  c.strokeRect(-8, 12, 16, 30);
+  c.strokeStyle = '#5b391f';
+  c.lineWidth = 3 / s;
+  c.beginPath();
+  c.moveTo(0, 14);
+  c.lineTo(-12, 0);
+  c.moveTo(0, 10);
+  c.lineTo(14, -4);
+  c.stroke();
+  c.strokeStyle = '#222';
+  c.fillStyle = base;
+  [[-20, -4, 22], [0, -14, 28], [20, -2, 22], [0, 14, 20]].forEach(([cx, cy, r]) => {
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+  });
+  c.fillStyle = dark;
+  [[-10, 0, 12], [12, -2, 10], [0, 16, 10]].forEach(([cx, cy, r]) => {
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+  });
+  if (opts.nettle) {
+    c.strokeStyle = '#2e5f18';
+    c.lineWidth = 2.5 / s;
+    [[-24, -4, -12, -20], [-5, -20, 6, -31], [18, -16, 28, -4], [-24, 18, -10, 28], [18, 18, 28, 28]].forEach(([x1, y1, x2, y2]) => {
+      c.beginPath();
+      c.moveTo(x1, y1);
+      c.lineTo(x2, y2);
+      c.stroke();
+    });
+  }
+  if (opts.berry) {
+    c.fillStyle = '#d83b35';
+    [[-18, -4], [8, -12], [18, 10], [-6, 18], [0, 2]].forEach(([cx, cy]) => {
+      c.beginPath();
+      c.arc(cx, cy, 5.5, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+    });
+  }
+  c.restore();
+}
+
+function drawOreShape(c, x, y, size, fill = '#8f9499', ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = fill;
+  vPoly(c, [[-30, 4], [-24, -22], [-6, -34], [18, -28], [30, -6], [24, 22], [0, 34], [-22, 24]]);
+  c.fill();
+  c.stroke();
+  c.fillStyle = '#b3b8bc';
+  vPoly(c, [[-16, -10], [-4, -24], [10, -18], [12, -2], [-2, 8], [-18, 4]]);
+  c.fill();
+  c.stroke();
+  c.strokeStyle = 'rgba(255,255,255,0.28)';
+  c.lineWidth = 2 / s;
+  [[-8, -18, 2, 10], [8, -18, 18, 8], [-18, 8, 12, -2], [-12, 18, 4, 26]].forEach(([x1, y1, x2, y2]) => {
+    c.beginPath();
+    c.moveTo(x1, y1);
+    c.lineTo(x2, y2);
+    c.stroke();
+  });
+  c.restore();
+}
+
+function drawBranchShape(c, x, y, size, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.strokeStyle = '#6f4725';
+  c.lineWidth = 7 / s;
+  c.beginPath();
+  c.moveTo(-22, 18);
+  c.lineTo(20, -18);
+  c.stroke();
+  c.lineWidth = 4 / s;
+  [[-6, 4, -16, -8], [6, -8, 18, -2]].forEach(([x1, y1, x2, y2]) => {
+    c.beginPath();
+    c.moveTo(x1, y1);
+    c.lineTo(x2, y2);
+    c.stroke();
+  });
+  c.restore();
+}
+
+function drawFiberShape(c, x, y, size, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.strokeStyle = '#84c45b';
+  c.lineWidth = 6 / s;
+  [[-18, 16, -10, -18], [0, 18, 2, -22], [16, 16, 12, -14]].forEach(([x1, y1, x2, y2]) => {
+    c.beginPath();
+    c.moveTo(x1, y1);
+    c.lineTo(x2, y2);
+    c.stroke();
+  });
+  c.restore();
+}
+
+function drawBerryShape(c, x, y, size, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = '#cf2f3b';
+  c.beginPath();
+  c.arc(0, 8, 22, 0, Math.PI * 2);
+  c.fill();
+  c.stroke();
+  c.fillStyle = '#5fa93a';
+  vPoly(c, [[-2, -6], [16, -12], [6, 2]]);
+  c.fill();
+  c.stroke();
+  c.restore();
+}
+
+function drawMeatShape(c, x, y, size, cooked = false, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = cooked ? '#c97c32' : '#b54d53';
+  c.beginPath();
+  c.moveTo(-22, 8);
+  c.quadraticCurveTo(-28, -14, -6, -22);
+  c.quadraticCurveTo(20, -20, 24, 4);
+  c.quadraticCurveTo(14, 24, -10, 24);
+  c.closePath();
+  c.fill();
+  c.stroke();
+  if (cooked) {
+    c.strokeStyle = '#71451b';
+    c.lineWidth = 3 / s;
+    [-8, 0, 8].forEach(v => {
+      c.beginPath();
+      c.moveTo(v - 8, -14);
+      c.lineTo(v + 2, 16);
+      c.stroke();
+    });
+  }
+  c.restore();
+}
+
+function drawBandageShape(c, x, y, size, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.rotate(-0.35);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = '#e4dcc7';
+  c.fillRect(-28, -18, 56, 36);
+  c.strokeRect(-28, -18, 56, 36);
+  c.strokeStyle = '#c0b48e';
+  c.lineWidth = 2 / s;
+  c.beginPath();
+  c.moveTo(-18, -6);
+  c.lineTo(18, -6);
+  c.moveTo(-18, 6);
+  c.lineTo(18, 6);
+  c.stroke();
+  c.restore();
+}
+
+function drawToolShape(c, id, x, y, size, ui = false, angle = -0.8) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.rotate(angle);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.strokeStyle = '#7a4c22';
+  c.lineWidth = 8 / s;
+  c.beginPath();
+  c.moveTo(-24, 18);
+  c.lineTo(18, -18);
+  c.stroke();
+  c.fillStyle = '#9aa0a5';
+  if (id === 'axe') {
+    c.fillRect(2, -26, 20, 18);
+    c.strokeRect(2, -26, 20, 18);
+  } else if (id === 'pickaxe') {
+    c.beginPath();
+    c.moveTo(-8, -18);
+    c.lineTo(18, -32);
+    c.lineTo(30, -16);
+    c.lineTo(4, -4);
+    c.closePath();
+    c.fill();
+    c.stroke();
+  } else if (id === 'hammer') {
+    c.fillRect(2, -30, 28, 14);
+    c.strokeRect(2, -30, 28, 14);
+    c.fillRect(12, -16, 10, 10);
+    c.strokeRect(12, -16, 10, 10);
+  } else if (id === 'spear') {
+    vPoly(c, [[18, -20], [34, -10], [18, 0]]);
+    c.fill();
+    c.stroke();
+  }
+  c.restore();
+}
+
+function drawFloorShape(c, x, y, size, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = '#ba8a53';
+  c.fillRect(-25, -25, 50, 50);
+  c.strokeRect(-25, -25, 50, 50);
+  c.strokeStyle = '#8a6239';
+  c.lineWidth = 3 / s;
+  [-8, 8].forEach(v => {
+    c.beginPath();
+    c.moveTo(-22, v);
+    c.lineTo(22, v);
+    c.stroke();
+  });
+  c.restore();
+}
+
+function drawWallShape(c, x, y, size, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = '#8b5b2c';
+  c.fillRect(-25, -25, 50, 50);
+  c.strokeRect(-25, -25, 50, 50);
+  c.strokeStyle = '#6d431f';
+  c.lineWidth = 3 / s;
+  [-15, -5, 5, 15].forEach(v => {
+    c.beginPath();
+    c.moveTo(v, -21);
+    c.lineTo(v, 21);
+    c.stroke();
+  });
+  c.beginPath();
+  c.moveTo(-22, 0);
+  c.lineTo(22, 0);
+  c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.12)';
+  c.fillRect(-22, -21, 44, 8);
+  c.restore();
+}
+
+function drawStoneWallShape(c, x, y, size, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = '#8e949b';
+  c.fillRect(-25, -25, 50, 50);
+  c.strokeRect(-25, -25, 50, 50);
+  c.strokeStyle = '#676d73';
+  c.lineWidth = 3 / s;
+  [-10, 6].forEach(v => {
+    c.beginPath();
+    c.moveTo(-22, v);
+    c.lineTo(22, v);
+    c.stroke();
+  });
+  [-6, 12].forEach(v => {
+    c.beginPath();
+    c.moveTo(v, -22);
+    c.lineTo(v, 6);
+    c.stroke();
+  });
+  c.beginPath();
+  c.moveTo(-14, 6);
+  c.lineTo(-14, 22);
+  c.moveTo(10, 6);
+  c.lineTo(10, 22);
+  c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.1)';
+  c.fillRect(-21, -21, 42, 7);
+  c.restore();
+}
+
+function drawDoorShape(c, x, y, size, open = false, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  if (open) c.rotate(-0.55);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = '#8b5b2c';
+  c.fillRect(-21, -25, 42, 50);
+  c.strokeRect(-21, -25, 42, 50);
+  c.strokeStyle = '#6d431f';
+  c.lineWidth = 3 / s;
+  [-8, 8].forEach(v => {
+    c.beginPath();
+    c.moveTo(v, -20);
+    c.lineTo(v, 20);
+    c.stroke();
+  });
+  c.fillStyle = '#f3d07a';
+  c.beginPath();
+  c.arc(12, 2, 3.5, 0, Math.PI * 2);
+  c.fill();
+  c.stroke();
+  c.restore();
+}
+
+function drawStoneDoorShape(c, x, y, size, open = false, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  if (open) c.rotate(-0.55);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = '#8a9097';
+  c.fillRect(-21, -25, 42, 50);
+  c.strokeRect(-21, -25, 42, 50);
+  c.strokeStyle = '#666c72';
+  c.lineWidth = 3 / s;
+  c.beginPath();
+  c.moveTo(0, -21);
+  c.lineTo(0, 21);
+  c.moveTo(-16, -2);
+  c.lineTo(16, -2);
+  c.stroke();
+  c.fillStyle = '#d5c98f';
+  c.beginPath();
+  c.arc(12, 3, 3.5, 0, Math.PI * 2);
+  c.fill();
+  c.stroke();
+  c.restore();
+}
+
+function drawWorkbenchShape(c, x, y, size, ui = false) {
+  const s = size / 100;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = '#8f6032';
+  c.fillRect(-30, -14, 60, 18);
+  c.strokeRect(-30, -14, 60, 18);
+  c.fillRect(-20, 4, 8, 24);
+  c.strokeRect(-20, 4, 8, 24);
+  c.fillRect(12, 4, 8, 24);
+  c.strokeRect(12, 4, 8, 24);
+  c.restore();
+}
+
+function drawCampfireShape(c, x, y, size, ts = 0, ui = false) {
+  const s = size / 100;
+  const flicker = 1 + Math.sin(ts / 90) * 0.06;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  vStyle(c, (ui ? 2 : 3) / s);
+  c.fillStyle = '#90959a';
+  [[-18, 10], [0, 16], [18, 10], [-8, 0], [10, -2]].forEach(([cx, cy]) => {
+    c.beginPath();
+    c.arc(cx, cy, 10, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+  });
+  c.save();
+  c.scale(flicker, flicker);
+  c.fillStyle = '#ffb32d';
+  vPoly(c, [[0, -26], [10, -4], [22, -10], [12, 8], [18, 24], [0, 14], [-18, 24], [-12, 8], [-22, -10], [-10, -4]]);
+  c.fill();
+  c.stroke();
+  c.fillStyle = '#ff6f2b';
+  vPoly(c, [[0, -16], [8, 0], [12, 14], [0, 8], [-12, 14], [-8, 0]]);
+  c.fill();
+  c.stroke();
+  c.restore();
+  c.restore();
+}
+
+function drawItemGlyph(c, id, x, y, size, ts = 0, ui = false) {
+  switch (id) {
+    case 'branch':
+      drawBranchShape(c, x, y, size, ui);
+      break;
+    case 'stone':
+      drawOreShape(c, x, y, size, '#9ca1a5', ui);
+      break;
+    case 'fiber':
+      drawFiberShape(c, x, y, size, ui);
+      break;
+    case 'berry':
+      drawBerryShape(c, x, y, size, ui);
+      break;
+    case 'rawMeat':
+      drawMeatShape(c, x, y, size, false, ui);
+      break;
+    case 'cookedMeat':
+      drawMeatShape(c, x, y, size, true, ui);
+      break;
+    case 'bandage':
+      drawBandageShape(c, x, y, size, ui);
+      break;
+    case 'axe':
+    case 'pickaxe':
+    case 'hammer':
+    case 'spear':
+      drawToolShape(c, id, x, y, size, ui);
+      break;
+    case 'campfire':
+      drawCampfireShape(c, x, y, size, ts, ui);
+      break;
+    case 'workbench':
+      drawWorkbenchShape(c, x, y, size, ui);
+      break;
+    case 'floor':
+      drawFloorShape(c, x, y, size, ui);
+      break;
+    case 'woodWall':
+      drawWallShape(c, x, y, size, ui);
+      break;
+    case 'door':
+      drawDoorShape(c, x, y, size, false, ui);
+      break;
+    case 'stoneWall':
+      drawStoneWallShape(c, x, y, size, ui);
+      break;
+    case 'stoneDoor':
+      drawStoneDoorShape(c, x, y, size, false, ui);
+      break;
+    default:
+      drawOreShape(c, x, y, size, '#9ca1a5', ui);
+      break;
+  }
+}
+
+function drawResourceGlyph(c, rtype, x, y, size, ts = 0, seed = 0) {
+  const windPhase = ts / 1000 + seed;
+  if (rtype === 'bush') drawBushShape(c, x, y, size, { windPhase });
+  else if (rtype === 'nettle') drawBushShape(c, x, y, size, { nettle: true, windPhase });
+  else if (rtype === 'berryBush') drawBushShape(c, x, y, size, { berry: true, windPhase });
+  else if (rtype === 'ore') drawOreShape(c, x, y, size, '#90969b', false);
+}
+
+function makeItemIconCanvas(id, size = 34, className = 'slotIcon') {
+  const icon = document.createElement('canvas');
+  icon.width = size;
+  icon.height = size;
+  icon.className = className;
+  const ic = icon.getContext('2d');
+  drawItemGlyph(ic, id, size / 2, size / 2, size * 0.82, performance.now(), true);
+  return icon;
+}
+
+// ─── Build a procedural 256×256 grass tile on an offscreen canvas ────────
+function buildGrassOffscreen() {
+  const oc = document.createElement('canvas');
+  oc.width  = GRASS_TILE;
+  oc.height = GRASS_TILE;
+  const c   = oc.getContext('2d');
+
+  // 1) Base fill — lighter devast.io-style green
+  c.fillStyle = '#528c3a';
+  c.fillRect(0, 0, GRASS_TILE, GRASS_TILE);
+
+  // 2) If the grass asset loaded, blend it in as a tint layer
+  if (imgOk('grass')) {
+    c.globalAlpha = 0.45;
+    c.drawImage(imgs.grass, 0, 0, GRASS_TILE, GRASS_TILE);
+    c.globalAlpha = 1;
+  }
+
+  // 3) Very low-contrast patches — keep opacity tiny to avoid visible tile seams
+  for (let i = 0; i < 10; i++) {
+    const x  = GRASS_TILE / 2 + (Math.random() - 0.5) * GRASS_TILE * 0.7; // stay away from edges
+    const y  = GRASS_TILE / 2 + (Math.random() - 0.5) * GRASS_TILE * 0.7;
+    const r  = 30 + Math.random() * 55;
+    const gv = Math.floor(100 + Math.random() * 25);
+    const grad = c.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(20,${gv},12,0.07)`);
+    grad.addColorStop(1, `rgba(20,${gv},12,0)`);
+    c.fillStyle = grad;
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+  }
+
+  // 4) Fine grass-blade strokes — very low contrast so seams are invisible
+  for (let i = 0; i < 240; i++) {
+    const x  = Math.random() * GRASS_TILE;
+    const y  = Math.random() * GRASS_TILE;
+    const h  = 2 + Math.random() * 6;
+    const gv = Math.floor(88 + Math.random() * 40);
+    c.strokeStyle = `rgba(10,${gv},8,0.14)`;
+    c.lineWidth   = 0.6;
+    c.beginPath();
+    c.moveTo(x, y);
+    c.lineTo(x + (Math.random() - 0.5) * 3, y - h);
+    c.stroke();
+  }
+
+  return oc;
+}
+
+// ─── Tiled grass background ───────────────────────────────────
+function drawBackground() {
+  // Build the procedural tile once (lazy)
+  if (!grassOffscreen) {
+    grassOffscreen = buildGrassOffscreen();
+  }
+  // (Re)create pattern after canvas resize invalidates it
+  if (!grassPattern) {
+    grassPattern = ctx.createPattern(grassOffscreen, 'repeat');
+  }
+
+  // Scroll the pattern in sync with the camera.
+  // translate(-ox,-oy) shifts the canvas so the pattern origin lands at
+  // world(0,0), making tiles appear fixed in world space.
+  const ox = ((cam.x % GRASS_TILE) + GRASS_TILE) % GRASS_TILE;
+  const oy = ((cam.y % GRASS_TILE) + GRASS_TILE) % GRASS_TILE;
+  ctx.save();
+  ctx.translate(-ox, -oy);
+  ctx.fillStyle = grassPattern;
+  ctx.fillRect(0, 0, canvas.width + GRASS_TILE, canvas.height + GRASS_TILE);
+  ctx.restore();
+}
+
+// ─── Resource HP bar (only shown when damaged) ───────────────
+function drawHpBar(wx, wy, radius, cur, max) {
+  if (cur === max) return;
+  const { sx, sy } = toScreen(wx, wy);
+  const w = 36, h = 5;
+  ctx.fillStyle = 'rgba(0,0,0,.6)';
+  ctx.fillRect(sx - w/2 - 1, sy - radius - 13, w + 2, h + 2);
+  ctx.fillStyle = '#922';
+  ctx.fillRect(sx - w/2, sy - radius - 12, w, h);
+  ctx.fillStyle = '#2e2';
+  ctx.fillRect(sx - w/2, sy - radius - 12, w * cur / max, h);
+}
+
+// ─── Ground shadow: dark soft ellipse drawn under each sprite ──
+function drawShadow(wx, wy, size) {
+  const { sx, sy } = toScreen(wx, wy);
+  if (sx < -size * 2 || sx > canvas.width + size * 2) return;
+  ctx.save();
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy + size * 0.39, size * 0.5, size * 0.15, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy + size * 0.37, size * 0.3, size * 0.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─── Yellow highlight ring when a resource is within reach ───
+function drawNearHighlight(wx, wy, radius) {
+  const d = Math.hypot(wx - player.x, wy - player.y);
+  if (d > REACH + radius + 12) return;
+  const { sx, sy } = toScreen(wx, wy);
+  const t = Math.max(0, 1 - d / (REACH + radius + 12));
+  ctx.save();
+  ctx.globalAlpha = t * 0.6;
+  ctx.strokeStyle = '#ffe866';
+  ctx.lineWidth   = 2.5;
+  ctx.beginPath();
+  ctx.arc(sx, sy, radius + 6, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── Player sprite + tool in hand ───────────────────────────
+function drawPlayer() {
+  const { sx, sy } = toScreen(player.x, player.y);
+  const now = Date.now();
+  const breatheX = player.isMoving ? 1 : (1 + Math.sin(now / 1000) * 0.02);
+  const breatheY = player.isMoving ? 1 : (1 - Math.sin(now / 1000) * 0.01);
+  const swingPhase = player.atkAnim > 0 ? 1 - player.atkAnim / ATTACK_SWING_DUR : 0;
+  const swingArc = player.atkAnim > 0 ? Math.sin(swingPhase * Math.PI) : 0;
+  const chewArc = player.useProgress > 0 ? Math.sin(player.useProgress * Math.PI * 4) * 0.045 : 0;
+
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(player.angle + player.wobble);
+  ctx.scale(breatheX + chewArc, Math.max(0.9, breatheY - chewArc * 0.6));
+
+  const R  = 20;   // body radius
+  const AR = 7;    // arm radius
+  const sw = swingArc * 0.55;
+  const heldId = activeTool();
+  const heldDef = heldId ? ITEMS[heldId] : null;
+  const isHeldTool = heldId && (heldId === 'axe' || heldId === 'pickaxe' || heldId === 'hammer' || heldId === 'spear');
+  const handLift = player.useProgress > 0 ? Math.sin(player.useProgress * Math.PI) : 0;
+  const handBob = Math.sin(now / 140) * 1.3;
+  const actionArmX = -5 + sw * 22 + (!isHeldTool && heldDef && !heldDef.placeable ? handLift * 16 : 0);
+  const actionArmY = R + AR + 2 - (!isHeldTool && heldDef && !heldDef.placeable ? handLift * 18 : 0);
+
+  // ── Arms (drawn first so body overlaps) ──────────────────────
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth   = 3;
+  ctx.fillStyle   = '#FFCC00';
+
+  ctx.beginPath(); // passive arm (left side relative to movement)
+  ctx.arc(-5, -(R + AR + 2), AR, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+
+  ctx.beginPath(); // weapon arm — swings forward (+X) on attack
+  ctx.arc(actionArmX, actionArmY, AR, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+
+  // ── Body ─────────────────────────────────────────────────────
+  ctx.fillStyle   = '#FFCC00';
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+
+  // ── Eyes (two black dots facing +X direction) ─────────────────
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath(); ctx.arc(13, -7, 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(13,  7, 3.5, 0, Math.PI * 2); ctx.fill();
+
+  if (heldId && heldDef && !heldDef.placeable && !isHeldTool) {
+    ctx.save();
+    ctx.translate(26 - handLift * 10, 10 - handLift * 20 + handBob);
+    ctx.rotate(-0.25 - handLift * 0.9 + Math.sin(now / 120) * 0.04);
+    drawItemGlyph(ctx, heldId, 0, 0, heldDef.eat || heldDef.use ? 24 : 20, now, false);
+    ctx.restore();
+  }
+
+  ctx.restore();
+
+  // ── Tool / weapon in hand (animated swing) ─────────────────
+  const tool = heldId;
+  if (tool && (tool === 'axe' || tool === 'pickaxe' || tool === 'hammer' || tool === 'spear')) {
+    const hAngle = player.angle + player.wobble + swingArc * (Math.PI / 4);
+    const hx = sx + Math.cos(hAngle) * 42;
+    const hy = sy + Math.sin(hAngle) * 42;
+    drawToolShape(ctx, tool, hx, hy, 42, false, hAngle + Math.PI / 3);
+  }
+
+  if (player.foodThoughtTimer > 0 && imgOk('foodThought')) {
+    const a = player.foodThoughtTimer > 2.35 ? 1 - (player.foodThoughtTimer - 2.35) / 0.35 : player.foodThoughtTimer < 0.25 ? player.foodThoughtTimer / 0.25 : 1;
+    const bx = sx + 20;
+    const by = sy - 84;
+    ctx.save();
+    ctx.globalAlpha = clamp(a, 0, 1);
+    ctx.fillStyle = 'rgba(255,255,255,0.98)';
+    ctx.strokeStyle = '#1e1e1e';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(sx + 8, sy - 26, 6, 0, Math.PI * 2);
+    ctx.arc(sx + 18, sy - 40, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.roundRect(bx - 52, by - 30, 104, 62, 28);
+    ctx.fill();
+    ctx.stroke();
+    ctx.drawImage(imgs.foodThought, bx - 34, by - 22, 68, 44);
+    ctx.restore();
+  }
+}
+
+function drawPlacedObject(obj, ts) {
+  ensurePlacedObjectState(obj);
+  const item = ITEMS[obj.id];
+  if (!item) return;
+  const tileSized = obj.id === 'floor' || obj.id === 'woodWall' || obj.id === 'door' || obj.id === 'stoneWall' || obj.id === 'stoneDoor';
+  const solidTile = obj.id === 'woodWall' || obj.id === 'door' || obj.id === 'stoneWall' || obj.id === 'stoneDoor';
+  const size = tileSized ? 100 : obj.id === 'campfire' ? 52 : obj.id === 'workbench' ? 58 : 48;
+  const shadowSize = solidTile ? 52 : size;
+  const seed = obj.animSeed || 0;
+  const bob = obj.id === 'campfire'
+    ? 1 + Math.sin(ts / 120 + seed) * 0.03 + Math.cos(ts / 80 + seed) * 0.02
+    : 1;
+  if (obj.id !== 'floor') drawShadow(obj.x, obj.y, shadowSize * (obj.id === 'campfire' ? 1.08 : 1));
+  if (obj.id === 'campfire') {
+    const { sx, sy } = toScreen(obj.x, obj.y);
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    const glow = ctx.createRadialGradient(sx, sy + 10, 4, sx, sy + 10, 36);
+    glow.addColorStop(0, 'rgba(255,210,88,0.9)');
+    glow.addColorStop(0.45, 'rgba(255,128,44,0.35)');
+    glow.addColorStop(1, 'rgba(255,128,44,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(sx, sy + 10, 36, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  const { sx, sy } = toScreen(obj.x, obj.y);
+  ctx.save();
+  if (bob !== 1) ctx.scale(1, 1);
+  if (obj.id === 'door') drawDoorShape(ctx, sx, sy, size * bob, !!obj.open, false);
+  else if (obj.id === 'stoneDoor') drawStoneDoorShape(ctx, sx, sy, size * bob, !!obj.open, false);
+  else drawItemGlyph(ctx, obj.id, sx, sy, size * bob, ts, false);
+  ctx.restore();
+  if (obj.id === 'workbench') {
+    const jobs = getWorkbenchJobs(obj);
+    if (jobs.length) {
+      const now = performance.now();
+      const readyCount = jobs.filter(job => job.readyAt <= now).length;
+      const activeJobs = jobs.filter(job => job.readyAt > now).sort((a, b) => a.readyAt - b.readyAt);
+      const statusText = readyCount > 0 ? `ГОТОВО ${readyCount}` : `${Math.max(1, Math.ceil((activeJobs[0].readyAt - now) / 1000))}с`;
+      const extraText = `${jobs.length}/4`;
+      const { sx: tx, sy: ty } = toScreen(obj.x, obj.y - 46);
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 13px Segoe UI, Arial';
+      ctx.fillStyle = 'rgba(0,0,0,0.74)';
+      ctx.beginPath();
+      ctx.roundRect(tx - 44, ty - 24, 88, 34, 10);
+      ctx.fill();
+      ctx.fillStyle = readyCount > 0 ? '#b5ff8b' : '#ffe280';
+      ctx.fillText(statusText, tx, ty - 5);
+      ctx.font = '11px Segoe UI, Arial';
+      ctx.fillStyle = 'rgba(255,255,255,0.78)';
+      ctx.fillText(extraText, tx, ty + 10);
+      ctx.restore();
+    }
+  }
+  if (obj.curHp < obj.maxHp || performance.now() - obj.lastHitAt < 1400) {
+    drawHpBar(obj.x, obj.y, Math.max(18, size * 0.36), obj.curHp, obj.maxHp);
+  }
+}
+
+// ─── Screen-edge vignette for atmosphere ────────────────────
+function buildVignetteOffscreen() {
+  const oc = document.createElement('canvas');
+  oc.width  = canvas.width;
+  oc.height = canvas.height;
+  const c   = oc.getContext('2d');
+  const cx  = canvas.width  / 2;
+  const cy  = canvas.height / 2;
+  const r   = Math.hypot(cx, cy) * 1.15;
+  const g   = c.createRadialGradient(cx, cy, r * 0.45, cx, cy, r);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.42)');
+  c.fillStyle = g;
+  c.fillRect(0, 0, canvas.width, canvas.height);
+  return oc;
+}
+function drawVignette() {
+  if (!vignetteOffscreen) vignetteOffscreen = buildVignetteOffscreen();
+  ctx.drawImage(vignetteOffscreen, 0, 0);
+}
+
+// ─── Draw world-space popups ─────────────────────────────────
+function drawPopups() {
+  ctx.textAlign  = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.font = 'bold 13px Segoe UI, Arial';
+  popups.forEach(p => {
+    const { sx, sy } = toScreen(p.wx, p.wy);
+    const a = clamp(p.life, 0, 1);
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.lineWidth = 3;
+    ctx.strokeText(p.text, sx, sy);
+    ctx.fillStyle = '#ffd875';
+    ctx.fillText(p.text, sx, sy);
+  });
+  ctx.globalAlpha  = 1;
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawInteractionPrompt() {
+  const prompt = getInteractionPromptTarget();
+  if (!prompt) return;
+  const offsetY = prompt.kind === 'workbench' ? 30 : 34;
+  const { sx, sy } = toScreen(prompt.obj.x, prompt.obj.y - offsetY);
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 14px Segoe UI, Arial';
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.beginPath();
+  ctx.roundRect(sx - 52, sy - 14, 104, 28, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#ffe280';
+  ctx.fillText(prompt.text, sx, sy + 1);
+  ctx.restore();
+}
+
+function drawMinimap() {
+  if (!minimapCtx) return;
+  const w = minimapCanvas.width;
+  const h = minimapCanvas.height;
+  minimapCtx.clearRect(0, 0, w, h);
+  minimapCtx.fillStyle = '#07180a';
+  minimapCtx.fillRect(0, 0, w, h);
+  minimapCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+  minimapCtx.lineWidth = 1;
+  const grid = 5;
+  for (let i = 1; i < grid; i++) {
+    const x = i * w / grid;
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(x, 0);
+    minimapCtx.lineTo(x, h);
+    minimapCtx.stroke();
+  }
+  for (let i = 1; i < grid; i++) {
+    const y = i * h / grid;
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(0, y);
+    minimapCtx.lineTo(w, y);
+    minimapCtx.stroke();
+  }
+  const px = clamp(player.x / WORLD_WIDTH * w, 5, w - 5);
+  const py = clamp(player.y / WORLD_HEIGHT * h, 5, h - 5);
+  minimapCtx.fillStyle = '#FDE57A';
+  minimapCtx.beginPath();
+  minimapCtx.arc(px, py, 4, 0, Math.PI * 2);
+  minimapCtx.fill();
+}
+
+function drawLargeMapCanvas() {
+  if (!largeMapCtx) return;
+  const w = largeMapCanvas.width;
+  const h = largeMapCanvas.height;
+  largeMapCtx.clearRect(0, 0, w, h);
+  largeMapCtx.fillStyle = '#04130a';
+  largeMapCtx.fillRect(0, 0, w, h);
+  largeMapCtx.strokeStyle = 'rgba(255,255,255,0.14)';
+  largeMapCtx.lineWidth = 1;
+  const cols = 10;
+  const rows = 10;
+  for (let i = 1; i < cols; i++) {
+    const x = i * w / cols;
+    largeMapCtx.beginPath();
+    largeMapCtx.moveTo(x, 0);
+    largeMapCtx.lineTo(x, h);
+    largeMapCtx.stroke();
+  }
+  for (let j = 1; j < rows; j++) {
+    const y = j * h / rows;
+    largeMapCtx.beginPath();
+    largeMapCtx.moveTo(0, y);
+    largeMapCtx.lineTo(w, y);
+    largeMapCtx.stroke();
+  }
+  largeMapCtx.fillStyle = 'rgba(255,255,255,0.8)';
+  largeMapCtx.font = '12px Segoe UI, Arial';
+  const letters = Array.from({ length: cols }, (_, idx) => String.fromCharCode(65 + idx));
+  const colStep = w / cols;
+  const rowStep = h / rows;
+  largeMapCtx.textAlign = 'left';
+  largeMapCtx.textBaseline = 'top';
+  largeMapCtx.fillStyle = 'rgba(255,255,255,0.52)';
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      largeMapCtx.fillText(`${letters[col]}${row + 1}`, col * colStep + 6, row * rowStep + 5);
+    }
+  }
+  const px = clamp(player.x / WORLD_WIDTH * w, 8, w - 8);
+  const py = clamp(player.y / WORLD_HEIGHT * h, 8, h - 8);
+  largeMapCtx.fillStyle = '#FBD75C';
+  largeMapCtx.beginPath();
+  largeMapCtx.arc(px, py, 7, 0, Math.PI * 2);
+  largeMapCtx.fill();
+  largeMapCtx.strokeStyle = 'rgba(255,255,255,0.35)';
+  largeMapCtx.lineWidth = 2;
+  largeMapCtx.beginPath();
+  largeMapCtx.arc(px, py, 12, 0, Math.PI * 2);
+  largeMapCtx.stroke();
+}
+
+function setLargeMapOpen(force) {
+  const next = typeof force === 'boolean' ? force : !largeMapOpen;
+  largeMapOpen = next;
+  if (largeMapModal) largeMapModal.classList.toggle('open', largeMapOpen);
+}
+
+// ─── World border ─────────────────────────────────────────────
+function drawBorder() {
+  ctx.strokeStyle = 'rgba(220,60,60,.7)';
+  ctx.lineWidth   = 4;
+  ctx.strokeRect(-cam.x, -cam.y, WORLD_WIDTH, WORLD_HEIGHT);
+}
+
+// ─── Placement ghost: shows where item will be placed ─────────
+function drawPlacementGhost() {
+  const tool = activeTool();
+  if (!tool || !ITEMS[tool]?.placeable) return;
+  const { x, y } = getPlacementPoint();
+  const { sx, sy } = toScreen(x, y);
+  const boxSize = tool === 'workbench' ? 58 : GRID_SIZE;
+  const renderSize = tool === 'workbench' ? 58 : tool === 'floor' || tool === 'woodWall' || tool === 'door' || tool === 'stoneWall' || tool === 'stoneDoor' ? 100 : 50;
+  const inRange = isPlacementInRange(x, y);
+  ctx.save();
+  ctx.globalAlpha = inRange ? 0.45 : 0.2;
+  drawItemGlyph(ctx, tool, sx, sy, renderSize, performance.now(), false);
+  ctx.strokeStyle = inRange ? '#fff' : '#ff6767';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(sx - boxSize / 2, sy - boxSize / 2, boxSize, boxSize);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER LOOP
+// ═══════════════════════════════════════════════════════════
+function render(ts) {
+  const dt = Math.min((ts - lastTs) / 1000, 0.1);
+  lastTs = ts;
+  update(dt);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Pixel-crisp sprite scaling
+  ctx.imageSmoothingEnabled = false;
+
+  // Background
+  drawBackground();
+  drawBorder();
+
+  // Build Y-sorted draw list: placed + resources + player, sorted by bottom-Y
+  const drawList = [];
+
+  placed.forEach(obj => {
+    drawList.push({ y: obj.id === 'floor' ? obj.y - 1000 : obj.y + 24, fn() {
+      drawPlacedObject(obj, ts);
+    }});
+  });
+
+  resources.forEach(res => {
+    const sortY = res.y + res.drawSize * 0.45;
+    drawList.push({ y: sortY, fn() {
+      const rx = res.x + (res.hitJoltX || 0);
+      const ry = res.y + (res.hitJoltY || 0);
+      const spawnT = res.spawnAnim > 0 ? (1 - res.spawnAnim / RESOURCE_SPAWN_ANIM_DUR) : 1;
+      const drawSize = res.drawSize * res.hitScale * (res.spawnAnim > 0 ? (0.45 + spawnT * 0.55) : 1);
+      ctx.save();
+      ctx.globalAlpha = res.spawnAnim > 0 ? (0.3 + spawnT * 0.7) : 1;
+      drawShadow(rx, ry, drawSize);
+      drawNearHighlight(rx, ry, drawSize / 2);
+      drawResourceGlyph(ctx, res.rtype, rx - cam.x, ry - cam.y, drawSize, ts, res.animSeed || 0);
+      ctx.restore();
+      if (res.spawnAnim <= 0) drawHpBar(rx, ry, drawSize / 2, res.curHp, res.maxHp);
+    }});
+  });
+
+  drawList.push({ y: player.y + 22, fn() {
+    drawShadow(player.x, player.y, 62);
+    drawPlayer();
+  }});
+
+  drawList.sort((a, b) => a.y - b.y);
+  drawList.forEach(d => d.fn());
+
+  // Particles
+  particles.forEach(p => {
+    const { sx, sy } = toScreen(p.x, p.y);
+    ctx.save();
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle   = p.color;
+    if (p.circle) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, p.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillRect(sx - p.size / 2, sy - p.size / 2, p.size, p.size);
+    }
+    ctx.restore();
+  });
+
+  // Placement ghost
+  drawPlacementGhost();
+
+  // Screen-edge vignette (drawn last, over everything)
+  drawVignette();
+
+  // Floating text
+  drawPopups();
+  drawInteractionPrompt();
+
+  // Mini / large map UI
+  drawMinimap();
+  drawLargeMapCanvas();
+
+  requestAnimationFrame(render);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HUD REFRESH
+// ═══════════════════════════════════════════════════════════
+function refreshHudBars() {
+  document.getElementById('hpFill').style.width     = (player.hp     / player.maxHp     * 100) + '%';
+  document.getElementById('hungerFill').style.width = (player.hunger / player.maxHunger * 100) + '%';
+  document.getElementById('energyFill').style.width = (player.energy / player.maxEnergy * 100) + '%';
+}
+
+// ─── Hotbar UI ───────────────────────────────────────────────
+function refreshHotbarUI() {
+  document.querySelectorAll('.hotslot').forEach((el, i) => {
+    // keep the slot-number span
+    const numSpan = el.querySelector('.num');
+    el.innerHTML = '';
+    if (numSpan) el.appendChild(numSpan);
+
+    el.classList.toggle('active', i === activeSlot);
+
+    const slot = hotbar[i];
+    if (!slot) return;
+    const def = ITEMS[slot.id];
+    if (!def) return;
+
+    el.title = `${def.name} ×${slot.qty}`;
+    const useFill = document.createElement('div');
+    useFill.className = 'useFill';
+    el.appendChild(useFill);
+    const useRing = document.createElement('div');
+    useRing.className = 'useRing';
+    el.appendChild(useRing);
+    el.appendChild(makeItemIconCanvas(slot.id, 34, 'slotIcon'));
+
+    const q = document.createElement('span');
+    q.className = 'qty'; q.textContent = `x${slot.qty}`;
+    el.appendChild(q);
+  });
+  refreshUseProgressUI();
+  if (craftOpen) refreshCraftButtons();
+}
+
+function refreshUseProgressUI() {
+  const slotEl = document.querySelector(`.hotslot[data-slot="${activeSlot}"]`);
+  document.querySelectorAll('.hotslot .useFill').forEach(el => {
+    el.style.transform = 'scaleY(0)';
+  });
+  document.querySelectorAll('.hotslot .useRing').forEach(el => {
+    el.style.opacity = '0';
+  });
+  const slot = activeSlotItem();
+  if (!slotEl || !slot || !isHoldUseItem(slot.id)) return;
+  const fill = slotEl.querySelector('.useFill');
+  const ring = slotEl.querySelector('.useRing');
+  if (fill) fill.style.transform = `scaleY(${player.useProgress})`;
+  if (ring) ring.style.opacity = player.useProgress > 0 ? '1' : '0';
+}
+
+// ─── Inventory panel UI ──────────────────────────────────────
+function refreshInvUI() {
+  refreshHotbarUI();
+}
+
+function refreshResourceBar() {
+  if (craftOpen) refreshCraftButtons();
+}
+
+// ─── Craft menu ──────────────────────────────────────────────
+function buildCraftUI() {
+  const list = document.getElementById('craftList');
+  const titleEl = document.querySelector('#craftTitle h2');
+  const subtitleEl = document.querySelector('#craftTitle p');
+  list.innerHTML = '';
+  const recipes = RECIPES.filter(recipe => (recipe.station || 'hand') === craftContext);
+  const stationJobs = craftContext === 'workbench' && craftStation ? getWorkbenchJobs(craftStation) : [];
+  const readyCount = craftContext === 'workbench' && craftStation ? getWorkbenchReadyJobs(craftStation).length : 0;
+  if (titleEl) titleEl.textContent = craftContext === 'workbench' ? 'Верстак' : 'Craft Box';
+  if (subtitleEl) {
+    subtitleEl.textContent = craftContext === 'workbench'
+      ? `Будівництво і важкий крафт. У черзі: ${stationJobs.length}/4 • Готово: ${readyCount}`
+      : 'Базові рецепти в руках';
+  }
+  recipes.forEach(recipe => {
+    const def = ITEMS[recipe.id];
+    const idx = RECIPES.indexOf(recipe);
+    const el  = document.createElement('div');
+    el.className = 'craftItem';
+
+    // icon
+    el.appendChild(makeItemIconCanvas(recipe.id, 42, 'craftIcon'));
+
+    // info
+    const info = document.createElement('div');
+    info.className = 'ci-info';
+    const reqText = Object.entries(recipe.needs)
+      .map(([k, v]) => `${ITEMS[k]?.name || k} ×${v}`)
+      .join(', ');
+    const timeText = recipe.time ? ` • ${Math.round(recipe.time / 1000)}с` : '';
+    info.innerHTML = `<div class="ci-name">${def.name}${recipe.qty > 1 ? ' ×' + recipe.qty : ''}</div>
+                      <div class="ci-req">${reqText}${timeText}</div>`;
+    el.appendChild(info);
+
+    // button
+    const btn = document.createElement('button');
+    btn.className    = 'craftBtn';
+    btn.dataset.idx  = idx;
+    btn.textContent  = craftContext === 'workbench' ? 'Запустити' : 'Скрафтити';
+    btn.addEventListener('click', () => {
+      const needsOk = Object.entries(recipe.needs).every(([k, v]) => invCount(k) >= v);
+      const queueOk = craftContext !== 'workbench' || !craftStation ? false : getWorkbenchJobs(craftStation).length < 4;
+      const canCraft = craftContext === 'workbench'
+        ? needsOk && !!craftStation && queueOk
+        : needsOk && canAddItem(recipe.id, recipe.qty);
+      if (!canCraft) return;
+      Object.entries(recipe.needs).forEach(([k, v]) => invRemove(k, v));
+      if (craftContext === 'workbench') {
+        workbenchJobs.push({
+          id: recipe.id,
+          qty: recipe.qty,
+          readyAt: performance.now() + (recipe.time || 0),
+          stationUid: craftStation.uid,
+          wx: craftStation?.x || player.x,
+          wy: craftStation?.y || player.y,
+          readyNotified: false,
+        });
+        spawnPopup(craftStation?.x || player.x, (craftStation?.y || player.y) - 24, `⚒ ${def.name}`);
+        buildCraftUI();
+      } else if (invAdd(recipe.id, recipe.qty)) {
+        spawnPopup(player.x, player.y - 30, `✔ ${def.name}`);
+      } else {
+        spawnPopup(player.x, player.y - 30, 'Немає місця');
+      }
+      refreshCraftButtons();
+    });
+    el.appendChild(btn);
+
+    list.appendChild(el);
+  });
+  refreshCraftButtons();
+}
+
+function refreshCraftButtons() {
+  document.querySelectorAll('.craftBtn').forEach(btn => {
+    const recipe = RECIPES[+btn.dataset.idx];
+    if (!recipe) return;
+    const needsOk = Object.entries(recipe.needs).every(([k, v]) => invCount(k) >= v);
+    if ((recipe.station || 'hand') === 'workbench') {
+      btn.disabled = !needsOk || !craftStation || getWorkbenchJobs(craftStation).length >= 4;
+    } else {
+      btn.disabled = !needsOk || !canAddItem(recipe.id, recipe.qty);
+    }
+  });
+}
+
+function setCraftOpen(open = !craftOpen, context = craftContext, station = craftStation) {
+  craftOpen = open;
+  document.getElementById('craftMenu').style.display = craftOpen ? 'block' : 'none';
+  if (!craftOpen) {
+    craftContext = 'hand';
+    craftStation = null;
+    return;
+  }
+  craftContext = context || 'hand';
+  craftStation = craftContext === 'workbench' ? station : null;
+  buildCraftUI();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INPUT HANDLING
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+
+  // Number keys → hotbar slot
+  if (/^[0-9]$/.test(e.key)) {
+    activeSlot = e.key === '0' ? 9 : (+e.key - 1);
+    resetUseProgress();
+    refreshHotbarUI();
+    return;
+  }
+
+  switch (e.code) {
+    case 'KeyC':   // toggle craft menu
+      setCraftOpen(!craftOpen || craftContext !== 'hand', 'hand', null);
+      break;
+
+    case 'KeyF':   // place item
+      doPlace();
+      break;
+
+    case 'KeyM':
+      setLargeMapOpen();
+      break;
+
+    case 'KeyE': {
+      const target = getInteractionPromptTarget();
+      if (!target) break;
+      if (target.kind === 'door') target.obj.open = !target.obj.open;
+      if (target.kind === 'workbench') {
+        ensurePlacedObjectState(target.obj);
+        if (!collectWorkbenchOutput(target.obj)) setCraftOpen(true, 'workbench', target.obj);
+      }
+      break;
+    }
+
+  }
+});
+
+window.addEventListener('keyup', e => {
+  keys[e.code] = false;
+});
+
+canvas.addEventListener('mousemove', e => {
+  msx = e.clientX;
+  msy = e.clientY;
+  mwx = msx + cam.x;
+  mwy = msy + cam.y;
+});
+
+canvas.addEventListener('mousedown', () => {
+  const tool = activeTool();
+  if (tool && ITEMS[tool]?.placeable) {
+    doPlace();
+  } else {
+    mouseHeld = true;
+    if (!(tool && isHoldUseItem(tool))) doAttack();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  mouseHeld = false;
+  resetUseProgress();
+});
+window.addEventListener('blur', () => {
+  mouseHeld = false;
+  resetUseProgress();
+});
+
+minimapWrap?.addEventListener('click', () => setLargeMapOpen(true));
+mapCloseBtn?.addEventListener('click', e => { e.stopPropagation(); setLargeMapOpen(false); });
+document.getElementById('craftTrigger')?.addEventListener('click', e => {
+  e.stopPropagation();
+  setCraftOpen(!craftOpen || craftContext !== 'hand', 'hand', null);
+});
+
+// Hotbar slot clicks
+document.querySelectorAll('.hotslot').forEach((el, i) => {
+  el.addEventListener('click', e => {
+    e.stopPropagation();   // prevent canvas click
+    activeSlot = i;
+    resetUseProgress();
+    refreshHotbarUI();
+  });
+});
+
+// Menu close buttons
+document.getElementById('invClose').addEventListener('click', () => {
+  invOpen = false;
+  document.getElementById('inventory').style.display = 'none';
+});
+document.getElementById('craftClose').addEventListener('click', () => {
+  setCraftOpen(false);
+});
+
+window.addEventListener('pointerdown', tryPlayWorldMusic, { once: true });
+window.addEventListener('keydown', tryPlayWorldMusic, { once: true });
+
+// ═══════════════════════════════════════════════════════════
+//  BOOTSTRAP
+// ═══════════════════════════════════════════════════════════
+preloadAssets(() => {
+  document.getElementById('loading').style.display = 'none';
+  tryPlayWorldMusic();
+
+  // Generate the world
+  generateWorld();
+
+  // Give player a small head-start kit
+  invAdd('branch', 3);
+  invAdd('stone', 2);
+  refreshHotbarUI();
+  refreshHudBars();
+
+  const maxInitX = Math.max(0, WORLD_WIDTH - canvas.width);
+  const maxInitY = Math.max(0, WORLD_HEIGHT - canvas.height);
+  cam.x = clamp(player.x - canvas.width / 2, 0, maxInitX);
+  cam.y = clamp(player.y - canvas.height / 2, 0, maxInitY);
+
+  // Grass pattern is created lazily on first drawBackground() call
+
+  // Kick off the game loop
+  requestAnimationFrame(ts => { lastTs = ts; render(ts); });
+});
+</script>
+</body>
+</html>
